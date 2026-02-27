@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#121212">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:orientation="horizontal"
+        android:background="#1B1B1B"
+        android:gravity="center_vertical"
+        android:paddingStart="16dp"
+        android:paddingEnd="8dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="PAAP Monitor"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnTest"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:text="Test"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#333333"
+            android:minWidth="60dp" />
+
+        <Button
+            android:id="@+id/btnClear"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:text="Clear"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#333333"
+            android:minWidth="60dp"
+            android:layout_marginStart="4dp" />
+
+        <Button
+            android:id="@+id/btnClose"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:text="X"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#FF0000"
+            android:minWidth="40dp"
+            android:layout_marginStart="4dp" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/tvPaapWarning"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#D32F2F"
+        android:gravity="center"
+        android:padding="8dp"
+        android:text="PAAP NOT IN FOREGROUND"
+        android:textColor="#FFFFFF"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/tvEmpty"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:text="Waiting for PAAP events...\n\nOn ticket box: events appear automatically.\nOn emulator: tap Test to inject fake events."
+        android:textColor="#888888"
+        android:textSize="14sp"
+        android:visibility="visible" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerEvents"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:padding="8dp"
+        android:clipToPadding="false"
+        android:visibility="gone" />
+
+</LinearLayout>

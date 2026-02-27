@@ -1,0 +1,95 @@
+package com.activepark_paap
+
+import org.json.JSONObject
+
+object PaapEventParser {
+
+    private val INBOUND_PATTERN = Regex("""UdpManager\s*:\s*handleUdpReadData\s+data\s*=\s*(.+)""")
+    private val OUTBOUND_PATTERN = Regex("""UdpWriterManager\s*:\s*send\s+data\s*=\s*(.+)""")
+
+    /** Parse a logcat line into a PaapEvent, or null if not a PAAP UDP line. */
+    fun parseLine(line: String): PaapEvent? {
+        val (jsonStr, direction) = extractJson(line) ?: return null
+        return parseJson(jsonStr.trim(), direction)
+    }
+
+    private fun extractJson(line: String): Pair<String, PaapEvent.Direction>? {
+        INBOUND_PATTERN.find(line)?.let {
+            return it.groupValues[1] to PaapEvent.Direction.INBOUND
+        }
+        OUTBOUND_PATTERN.find(line)?.let {
+            return it.groupValues[1] to PaapEvent.Direction.OUTBOUND
+        }
+        return null
+    }
+
+    private fun parseJson(jsonStr: String, dir: PaapEvent.Direction): PaapEvent {
+        val json = tryParseJson(jsonStr) ?: return PaapEvent.Unknown(jsonStr, dir)
+
+        // Command-based events
+        val command = json.optString("command", "")
+        if (command.isNotEmpty()) {
+            return when (command) {
+                "openDoor" -> PaapEvent.GateOpen(
+                    delay = json.optInt("delay", 0),
+                    io = json.optInt("io", 0),
+                    direction = dir
+                )
+                "speakOut" -> PaapEvent.Speak(
+                    text = json.optString("speakText", ""),
+                    language = json.optString("language", ""),
+                    speechRate = json.optString("speechRate", "1.0"),
+                    direction = dir
+                )
+                "Print" -> PaapEvent.PrintTicket(
+                    title = json.optString("title", ""),
+                    content = json.optString("content", ""),
+                    qrCode = json.optString("QRcode", ""),
+                    direction = dir
+                )
+                "OnLine" -> PaapEvent.OnlineCheck(dir)
+                else -> PaapEvent.Unknown(jsonStr, dir)
+            }
+        }
+
+        // Key-based events
+        if (json.has("heartbeat")) return PaapEvent.Heartbeat(dir)
+        if (json.has("PushButton")) return PaapEvent.PushButton(dir)
+        if (json.has("Vehicle Sensing")) {
+            return PaapEvent.VehicleSensing(
+                status = json.optString("Vehicle Sensing", ""),
+                direction = dir
+            )
+        }
+
+        // Display update: has text1..text5 or notice
+        val displayKeys = listOf("text1", "text2", "text3", "text4", "text5", "notice")
+        val foundDisplayKeys = displayKeys.filter { json.has(it) }
+        if (foundDisplayKeys.isNotEmpty()) {
+            val texts = mutableMapOf<String, PaapEvent.DisplayField>()
+            for (key in foundDisplayKeys) {
+                val fieldObj = json.optJSONObject(key) ?: continue
+                texts[key] = PaapEvent.DisplayField(
+                    text = fieldObj.optString("${key}Text", ""),
+                    color = fieldObj.optString("${key}Color", "#FFFFFF"),
+                    size = fieldObj.optInt("${key}Size", 30),
+                    gravity = fieldObj.optString("${key}Gravity", "CENTER")
+                )
+            }
+            return PaapEvent.DisplayUpdate(texts, dir)
+        }
+
+        // OnLine string reply
+        if (jsonStr.trim('"') == "OnLine") return PaapEvent.OnlineCheck(dir)
+
+        return PaapEvent.Unknown(jsonStr, dir)
+    }
+
+    private fun tryParseJson(s: String): JSONObject? {
+        return try {
+            JSONObject(s)
+        } catch (_: Exception) {
+            null
+        }
+    }
+}

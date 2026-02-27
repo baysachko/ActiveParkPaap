@@ -1,0 +1,29 @@
+# Built outputs
+/build
+/app/build
+*.apk
+*.ap_
+*.dex
+*.class
+
+# Gradle
+.gradle
+*.iml
+
+# Local config
+local.properties
+
+# IDE
+/.idea
+.DS_Store
+
+# Native
+.externalNativeBuild
+.cxx
+
+# Misc
+/captures
+*.log
+*.tmp
+*.bak
+*.swp
