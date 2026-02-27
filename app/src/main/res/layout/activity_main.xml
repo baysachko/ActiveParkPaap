@@ -43,6 +43,16 @@
             android:layout_marginStart="4dp" />
 
         <Button
+            android:id="@+id/btnBack"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:text="Back"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#333333"
+            android:minWidth="60dp"
+            android:layout_marginStart="4dp" />
+
+        <Button
             android:id="@+id/btnClose"
             android:layout_width="wrap_content"
             android:layout_height="36dp"

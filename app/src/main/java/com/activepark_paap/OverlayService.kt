@@ -1,30 +1,32 @@
 package com.activepark_paap
 
-import android.app.ActivityManager
 import android.app.Service
 import android.content.Intent
-import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import android.view.*
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.activepark_paap.ui.entry.EntryIdleView
 import kotlinx.coroutines.*
-import java.text.SimpleDateFormat
-import java.util.*
 
 class OverlayService : Service() {
 
     private var windowManager: WindowManager? = null
-    private var overlayView: View? = null
+    private var rootContainer: FrameLayout? = null
     private val events = mutableListOf<PaapEvent>()
     private lateinit var adapter: EventAdapter
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+
+    private var idleView: EntryIdleView? = null
+    private var debugView: View? = null
+    private var showingDebug = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -38,8 +40,7 @@ class OverlayService : Service() {
 
     @Suppress("DEPRECATION")
     private fun createOverlay() {
-        val inflater = LayoutInflater.from(this)
-        overlayView = inflater.inflate(R.layout.activity_main, null)
+        rootContainer = FrameLayout(this)
 
         @Suppress("DEPRECATION")
         val windowType = if (Build.VERSION.SDK_INT >= 26)
@@ -57,29 +58,12 @@ class OverlayService : Service() {
         )
         params.gravity = Gravity.TOP or Gravity.START
 
-        val recycler = overlayView!!.findViewById<RecyclerView>(R.id.recyclerEvents)
-        val tvEmpty = overlayView!!.findViewById<TextView>(R.id.tvEmpty)
-        adapter = EventAdapter(events)
-        recycler.layoutManager = LinearLayoutManager(this)
-        recycler.adapter = adapter
+        setupIdleView()
+        setupDebugView()
+        showIdle()
 
-        overlayView!!.findViewById<Button>(R.id.btnClear).setOnClickListener {
-            events.clear()
-            adapter.notifyDataSetChanged()
-            updateVisibility(tvEmpty, recycler)
-        }
-
-        overlayView!!.findViewById<Button>(R.id.btnTest).setOnClickListener {
-            injectTestEvents()
-        }
-
-        overlayView!!.findViewById<Button>(R.id.btnClose).setOnClickListener {
-            stopSelf()
-        }
-
-        updateVisibility(tvEmpty, recycler)
         try {
-            windowManager!!.addView(overlayView, params)
+            windowManager!!.addView(rootContainer, params)
         } catch (e: Exception) {
             Log.e("OverlayService", "Failed to add overlay", e)
             stopSelf()
@@ -87,9 +71,73 @@ class OverlayService : Service() {
         }
     }
 
+    private fun setupIdleView() {
+        idleView = EntryIdleView(this)
+        idleView!!.startClock(scope)
+        idleView!!.onDebugRequested = { showDebug() }
+    }
+
+    private fun setupDebugView() {
+        val inflater = LayoutInflater.from(this)
+        debugView = inflater.inflate(R.layout.activity_main, null)
+
+        val recycler = debugView!!.findViewById<RecyclerView>(R.id.recyclerEvents)
+        val tvEmpty = debugView!!.findViewById<TextView>(R.id.tvEmpty)
+        adapter = EventAdapter(events)
+        recycler.layoutManager = LinearLayoutManager(this)
+        recycler.adapter = adapter
+
+        debugView!!.findViewById<Button>(R.id.btnClear).setOnClickListener {
+            events.clear()
+            adapter.notifyDataSetChanged()
+            updateDebugVisibility(tvEmpty, recycler)
+        }
+
+        debugView!!.findViewById<Button>(R.id.btnTest).setOnClickListener {
+            injectTestEvents()
+        }
+
+        debugView!!.findViewById<Button>(R.id.btnBack).setOnClickListener {
+            showIdle()
+        }
+
+        debugView!!.findViewById<Button>(R.id.btnClose).setOnClickListener {
+            stopSelf()
+        }
+
+        updateDebugVisibility(tvEmpty, recycler)
+    }
+
+    private fun showIdle() {
+        assert(rootContainer != null) { "rootContainer null" }
+        assert(idleView != null) { "idleView null" }
+        rootContainer!!.removeAllViews()
+        rootContainer!!.addView(
+            idleView!!.view,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+        showingDebug = false
+    }
+
+    private fun showDebug() {
+        assert(rootContainer != null) { "rootContainer null" }
+        assert(debugView != null) { "debugView null" }
+        rootContainer!!.removeAllViews()
+        rootContainer!!.addView(
+            debugView,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+        showingDebug = true
+    }
+
     @Suppress("DEPRECATION")
     private fun monitorPaap() {
-        val warning = overlayView!!.findViewById<TextView>(R.id.tvPaapWarning)
         scope.launch {
             while (isActive) {
                 val paapResumed = try {
@@ -100,31 +148,37 @@ class OverlayService : Service() {
                     output.contains("com.anziot.park")
                 } catch (e: Exception) {
                     Log.e("OverlayService", "dumpsys failed", e)
-                    true // assume OK on failure
+                    true
                 }
                 Log.d("OverlayService", "PAAP resumed: $paapResumed")
-                warning.visibility = if (paapResumed) View.GONE else View.VISIBLE
+                if (showingDebug) {
+                    val warning = debugView?.findViewById<TextView>(R.id.tvPaapWarning)
+                    warning?.visibility = if (paapResumed) View.GONE else View.VISIBLE
+                }
                 delay(5000)
             }
         }
     }
 
     private fun collectEvents() {
-        val recycler = overlayView!!.findViewById<RecyclerView>(R.id.recyclerEvents)
-        val tvEmpty = overlayView!!.findViewById<TextView>(R.id.tvEmpty)
-
         scope.launch {
             LogcatReaderService.events.collect { event ->
                 events.add(0, event)
                 if (events.size > 200) events.subList(200, events.size).clear()
                 adapter.notifyDataSetChanged()
-                recycler.scrollToPosition(0)
-                updateVisibility(tvEmpty, recycler)
+                if (showingDebug) {
+                    val recycler = debugView?.findViewById<RecyclerView>(R.id.recyclerEvents)
+                    val tvEmpty = debugView?.findViewById<TextView>(R.id.tvEmpty)
+                    recycler?.scrollToPosition(0)
+                    if (tvEmpty != null && recycler != null) {
+                        updateDebugVisibility(tvEmpty, recycler)
+                    }
+                }
             }
         }
     }
 
-    private fun updateVisibility(tvEmpty: TextView, recycler: RecyclerView) {
+    private fun updateDebugVisibility(tvEmpty: TextView, recycler: RecyclerView) {
         if (events.isEmpty()) {
             tvEmpty.visibility = View.VISIBLE
             recycler.visibility = View.GONE
@@ -151,9 +205,9 @@ class OverlayService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         scope.cancel()
-        if (overlayView != null) {
-            windowManager?.removeView(overlayView)
-            overlayView = null
+        if (rootContainer != null) {
+            windowManager?.removeView(rootContainer)
+            rootContainer = null
         }
     }
 }

@@ -1,6 +1,6 @@
 # ActiveParkPaap
 
-Overlay app for IoT-3288A ticket box (RK3288, Android 5.1.1, API 22, 1920x1080, rooted).
+Overlay app for IoT-3288A ticket box (RK3288, Android 5.1.1, API 22, 1024x768, rooted).
 Sits on top of PAAP (`com.anziot.park`) — the Chinese parking app that handles all hardware (gate, printer, card readers, UDP).
 
 ## Architecture
@@ -36,15 +36,17 @@ Sits on top of PAAP (`com.anziot.park`) — the Chinese parking app that handles
 - `LogcatReaderService.kt` — background logcat reader via `Runtime.exec("logcat", "-s", "PRETTY_LOGGER:E", "-T", "1")`. Uses AtomicBoolean to prevent duplicate processes. Drains stderr.
 - `PaapEventParser.kt` — regex extracts JSON from `UdpManager:handleUdpReadData` (inbound) / `UdpWriterManager:send` (outbound), maps to typed events
 - `PaapEvent.kt` — sealed class: GateOpen, Speak, PrintTicket, DisplayUpdate, VehicleSensing, PushButton, Heartbeat, OnlineCheck, Unknown
-- `OverlayService.kt` — draws UI via WindowManager overlay. Uses `TYPE_APPLICATION_OVERLAY` on API 26+ (emulator), `TYPE_SYSTEM_ALERT` on API 22 (box)
+- `OverlayService.kt` — draws UI via WindowManager overlay. Uses `TYPE_APPLICATION_OVERLAY` on API 26+ (emulator), `TYPE_SYSTEM_ALERT` on API 22 (box). Monitors PAAP foreground state via `su -c "dumpsys activity activities"` every 5s — shows red warning banner when PAAP not resumed.
 - `MainActivity.kt` — launcher: starts LogcatReaderService + OverlayService, then finishes. Handles overlay permission prompt on API 23+.
 
 ## Critical Warnings
 
 - **NO shell grep** — `logcat | grep` caused box slowdown/reboot. Use logcat's built-in `-s` tag filtering only.
 - **NO Jetpack Compose** — requires minSdk 23, box is API 22. Use XML views.
-- **PAAP must stay running** — it handles all hardware. Our app is overlay only.
+- **PAAP must stay running** — it handles all hardware. Our app is overlay only. PAAP must be in foreground (resumed activity) for hardware to work.
+- **UDP timing**: Heartbeat every 10s, OnlineCheck every 60s.
 - Emulator vs box: emulator needs `TYPE_APPLICATION_OVERLAY` + Settings permission grant. Box needs `TYPE_SYSTEM_ALERT` + `appops set`.
+- **PAAP detection**: `getRunningTasks`/`getRunningAppProcesses` don't work (overlay steals focus, API restrictions). Only `su -c "dumpsys activity activities | grep mResumedActivity"` reliably detects PAAP foreground state on the rooted box.
 
 ## Knowledge Reference
 
