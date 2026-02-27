@@ -36,8 +36,51 @@ Sits on top of PAAP (`com.anziot.park`) — the Chinese parking app that handles
 - `LogcatReaderService.kt` — background logcat reader via `Runtime.exec("logcat", "-s", "PRETTY_LOGGER:E", "-T", "1")`. Uses AtomicBoolean to prevent duplicate processes. Drains stderr.
 - `PaapEventParser.kt` — regex extracts JSON from `UdpManager:handleUdpReadData` (inbound) / `UdpWriterManager:send` (outbound), maps to typed events
 - `PaapEvent.kt` — sealed class: GateOpen, Speak, PrintTicket, DisplayUpdate, VehicleSensing, PushButton, Heartbeat, OnlineCheck, Unknown
-- `OverlayService.kt` — draws UI via WindowManager overlay. Uses `TYPE_APPLICATION_OVERLAY` on API 26+ (emulator), `TYPE_SYSTEM_ALERT` on API 22 (box). Monitors PAAP foreground state via `su -c "dumpsys activity activities"` every 5s — shows red warning banner when PAAP not resumed.
+- `OverlayService.kt` — draws UI via WindowManager overlay. Uses `TYPE_APPLICATION_OVERLAY` on API 26+ (emulator), `TYPE_SYSTEM_ALERT` on API 22 (box). Monitors PAAP foreground state via `su -c "dumpsys activity activities"` every 5s — shows red warning banner when PAAP not resumed. Manages page switching via `Page` enum and `showPage()`.
 - `MainActivity.kt` — launcher: starts LogcatReaderService + OverlayService, then finishes. Handles overlay permission prompt on API 23+.
+- `BootReceiver.kt` — `BOOT_COMPLETED` + custom `ACTION_RESTART` receiver. Starts both services.
+- `EventLog.kt` — JSONL event persistence. 7 daily files, auto-prune. Testable class (inject `logDir`).
+
+## UI Screens (Page enum in OverlayService)
+
+All screens share: top bar (logo + clock), accent line, bottom bar (version + network status), QR card. Font: Space Grotesk via `FontHelper.applyFonts()` (tag-based: `android:tag="bold"`).
+
+- **IDLE** — `EntryIdleView` / `overlay_entry_idle.xml` — "WELCOME" + ActivePark branding. `setMode(isExit=true)` switches to "GOODBYE".
+- **EXIT_IDLE** — reuses `EntryIdleView` with `setMode(isExit=true)` — "GOODBYE" screen.
+- **TRANSACTION** — `EntryTransactionView` / `overlay_entry_transaction.xml` — plate number, type badge, entry date. Status label configurable (WELCOME/navy).
+- **EXIT_TRANSACTION** — `ExitTransactionView` / `overlay_exit_transaction.xml` — plate, parking time, pay amount. Status: EXITING/yellow `#E8A000`.
+- **COMPLETED_EXIT** — `CompletedExitView` / `overlay_completed_exit.xml` — green EXITED, plate, badge, exit date, "THANK YOU".
+- **DEBUG** — `activity_main.xml` — event log + page selector buttons (Idle, Transaction, Exit Idle, Exit Txn, Complete).
+
+Debug access: 6-tap "Connected" text in bottom bar on any screen.
+
+## UI Conventions
+
+- Shared font logic: `ui/common/FontHelper.kt` — walks view tree, applies bold/regular based on `android:tag="bold"`
+- View classes: `ui/entry/` (entry screens), `ui/exit/` (exit screens). Each has `startClock(scope)`, `onDebugRequested` callback, `setNetworkStatus()`.
+- Badge drawable: `bg_type_badge.xml` (red `#8C1B0A`, 8dp corners)
+- Colors: navy `#010062`, accent_red `#8C1B0A`, brand_red `#E84333`, exit yellow `#E8A000`, exit green `#22C55E`
+
+## Design Reference
+
+Pencil file: `/Users/vodka/Documents/Pencil/untitled.pen`
+Frames: `Hdmbk` (Entry Idle), `bMAUt` (Transaction Entry), `bJGHf` (Exit Idle), `FMa34` (Active Transaction Exit), `iMUyu` (Completed Transaction Exit)
+
+## Auto-start & Self-restart
+
+- **Boot receiver** (`BootReceiver.kt`) — `BOOT_COMPLETED` starts both services on device boot
+- **AlarmManager restart** — `OverlayService.onDestroy()` schedules alarm (8s) to restart via `BootReceiver`. Survives `stopSelf()` but NOT `force-stop` (which skips `onDestroy`).
+- **`START_STICKY`** on both services — OS restarts if killed by low memory
+- **`stopWithTask="false"`** on both services in manifest
+- Box logs: app-level `Log.i`/`Log.d` don't appear in logcat. Use `Log.e` for debugging.
+
+## Event Log
+
+- `EventLog.kt` — persists events to JSONL files in `filesDir/logs/events_YYYY-MM-DD.jsonl`
+- 1 file per day, 7 days max (auto-prune on init)
+- `LogcatReaderService` appends events on receive
+- `OverlayService` loads today's history on startup → debug view shows past events
+- Class-based (not singleton) for testability — inject `logDir` via constructor
 
 ## Critical Warnings
 

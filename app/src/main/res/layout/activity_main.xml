@@ -63,6 +63,74 @@
             android:layout_marginStart="4dp" />
     </LinearLayout>
 
+    <!-- Page Selector -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="40dp"
+        android:orientation="horizontal"
+        android:background="#222222"
+        android:gravity="center_vertical"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Page:"
+            android:textColor="#888888"
+            android:textSize="14sp" />
+
+        <Button
+            android:id="@+id/btnPageIdle"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:layout_marginStart="8dp"
+            android:text="Idle"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#444444"
+            android:minWidth="80dp" />
+
+        <Button
+            android:id="@+id/btnPageTransaction"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:layout_marginStart="4dp"
+            android:text="Transaction"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#444444"
+            android:minWidth="120dp" />
+
+        <Button
+            android:id="@+id/btnPageExitIdle"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:layout_marginStart="4dp"
+            android:text="Exit Idle"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#444444"
+            android:minWidth="80dp" />
+
+        <Button
+            android:id="@+id/btnPageExitTxn"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:layout_marginStart="4dp"
+            android:text="Exit Txn"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#444444"
+            android:minWidth="80dp" />
+
+        <Button
+            android:id="@+id/btnPageComplete"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:layout_marginStart="4dp"
+            android:text="Complete"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#444444"
+            android:minWidth="80dp" />
+    </LinearLayout>
+
     <TextView
         android:id="@+id/tvPaapWarning"
         android:layout_width="match_parent"

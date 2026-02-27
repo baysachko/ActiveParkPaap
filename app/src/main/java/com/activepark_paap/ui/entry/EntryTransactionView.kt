@@ -10,15 +10,18 @@ import kotlinx.coroutines.*
 import java.text.SimpleDateFormat
 import java.util.*
 
-class EntryIdleView(context: Context) {
+class EntryTransactionView(context: Context) {
 
     val view: View = LayoutInflater.from(context)
-        .inflate(R.layout.overlay_entry_idle, null)
+        .inflate(R.layout.overlay_entry_transaction, null)
 
     private val tvTime: TextView = view.findViewById(R.id.tvTime)
     private val tvDate: TextView = view.findViewById(R.id.tvDate)
     private val tvNetStatus: TextView = view.findViewById(R.id.tvNetStatus)
-    private val tvWelcome: TextView = view.findViewById(R.id.tvWelcome)
+    private val tvPlate: TextView = view.findViewById(R.id.tvPlate)
+    private val tvTypeBadge: TextView = view.findViewById(R.id.tvTypeBadge)
+    private val tvEntryDate: TextView = view.findViewById(R.id.tvEntryDate)
+    private val tvStatusLabel: TextView = view.findViewById(R.id.tvStatusLabel)
 
     private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
     private val dateFormat = SimpleDateFormat("EEEE, dd MMM yyyy", Locale.ENGLISH)
@@ -58,8 +61,25 @@ class EntryIdleView(context: Context) {
         }
     }
 
-    fun setMode(isExit: Boolean) {
-        tvWelcome.text = if (isExit) "GOODBYE" else "WELCOME"
+    fun setPlate(text: String) {
+        assert(text.isNotEmpty()) { "plate text empty" }
+        tvPlate.text = text
+    }
+
+    fun setTypeBadge(text: String) {
+        assert(text.isNotEmpty()) { "badge text empty" }
+        tvTypeBadge.text = text
+    }
+
+    fun setEntryDate(text: String) {
+        assert(text.isNotEmpty()) { "entry date empty" }
+        tvEntryDate.text = text
+    }
+
+    fun setStatusLabel(text: String, color: Int) {
+        assert(text.isNotEmpty()) { "status label empty" }
+        tvStatusLabel.text = text
+        tvStatusLabel.setTextColor(color)
     }
 
     fun setNetworkStatus(connected: Boolean) {

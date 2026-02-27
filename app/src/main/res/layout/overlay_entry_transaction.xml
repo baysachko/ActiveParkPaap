@@ -12,7 +12,6 @@
         android:layout_gravity="top"
         android:background="@color/navy">
 
-        <!-- Logo Area -->
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="match_parent"
@@ -21,7 +20,6 @@
             android:orientation="horizontal">
 
             <ImageView
-                android:id="@+id/imgLogo"
                 android:layout_width="38dp"
                 android:layout_height="38dp"
                 android:scaleType="fitCenter"
@@ -32,7 +30,6 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="6dp"
-                android:fontFamily="@font/space_grotesk_bold"
                 android:tag="bold"
                 android:text="Active"
                 android:textColor="@color/brand_red"
@@ -41,7 +38,6 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:fontFamily="@font/space_grotesk_bold"
                 android:tag="bold"
                 android:text="Park"
                 android:textColor="@color/white"
@@ -55,8 +51,7 @@
             android:layout_gravity="end"
             android:layout_marginEnd="24dp"
             android:layout_marginTop="8dp"
-            android:fontFamily="@font/space_grotesk_bold"
-                android:tag="bold"
+            android:tag="bold"
             android:text="14:32"
             android:textColor="@color/white"
             android:textSize="24sp" />
@@ -68,13 +63,12 @@
             android:layout_gravity="end"
             android:layout_marginEnd="24dp"
             android:layout_marginTop="40dp"
-            android:fontFamily="@font/space_grotesk_regular"
             android:text="Thursday, 27 Feb 2026"
             android:textColor="@color/white_70"
             android:textSize="11sp" />
     </FrameLayout>
 
-    <!-- Accent Line (3dp) -->
+    <!-- Accent Line -->
     <View
         android:layout_width="match_parent"
         android:layout_height="3dp"
@@ -82,65 +76,95 @@
         android:layout_marginTop="70dp"
         android:background="@color/accent_red" />
 
-    <!-- Center Content -->
+    <!-- Content Area -->
     <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_gravity="center"
-        android:gravity="center_horizontal"
+        android:layout_marginStart="54dp"
+        android:layout_marginTop="100dp"
         android:orientation="vertical">
 
+        <!-- Status Label -->
         <TextView
-            android:id="@+id/tvWelcome"
+            android:id="@+id/tvStatusLabel"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:fontFamily="@font/space_grotesk_bold"
-                android:tag="bold"
-            android:letterSpacing="0.12"
+            android:tag="bold"
+            android:letterSpacing="0.15"
             android:text="WELCOME"
-            android:textColor="@color/accent_red"
-            android:textSize="42sp" />
+            android:textColor="@color/navy"
+            android:textSize="24sp" />
 
+        <!-- Status Underline -->
         <View
-            android:layout_width="240dp"
+            android:id="@+id/tvStatusLine"
+            android:layout_width="120dp"
             android:layout_height="2dp"
-            android:layout_marginTop="-8dp"
+            android:layout_marginTop="4dp"
             android:background="@color/navy" />
 
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="-20dp"
-            android:orientation="horizontal">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:fontFamily="@font/space_grotesk_bold"
-                android:tag="bold"
-                android:text="Active"
-                android:textColor="@color/accent_red"
-                android:textSize="80sp" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:fontFamily="@font/space_grotesk_bold"
-                android:tag="bold"
-                android:text="Park"
-                android:textColor="@color/navy"
-                android:textSize="80sp" />
-        </LinearLayout>
-
+        <!-- Ticket No label -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="-20dp"
-            android:fontFamily="@font/space_grotesk_regular"
-            android:letterSpacing="0.42"
-            android:text="Smart parking management"
-            android:textColor="@color/accent_red"
-            android:textSize="18sp" />
+            android:layout_marginTop="16dp"
+            android:tag="bold"
+            android:letterSpacing="0.12"
+            android:text="TICKET NO."
+            android:textColor="#888888"
+            android:textSize="24sp" />
+
+        <!-- Plate Number -->
+        <TextView
+            android:id="@+id/tvPlate"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="-8dp"
+            android:tag="bold"
+            android:letterSpacing="-0.02"
+            android:text="CB12345"
+            android:textColor="@color/navy"
+            android:textSize="120sp" />
+
+        <!-- Type Badge -->
+        <FrameLayout
+            android:layout_width="280dp"
+            android:layout_height="55dp"
+            android:layout_marginTop="4dp"
+            android:background="@drawable/bg_type_badge">
+
+            <TextView
+                android:id="@+id/tvTypeBadge"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:tag="bold"
+                android:text="TEMPORARY"
+                android:textColor="@color/white"
+                android:textSize="32sp" />
+        </FrameLayout>
+
+        <!-- Entry Date label -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:tag="bold"
+            android:letterSpacing="0.12"
+            android:text="ENTRY DATE"
+            android:textColor="#888888"
+            android:textSize="22sp" />
+
+        <!-- Entry Date -->
+        <TextView
+            android:id="@+id/tvEntryDate"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:tag="bold"
+            android:text="27-02-2026"
+            android:textColor="#333333"
+            android:textSize="56sp" />
     </LinearLayout>
 
     <!-- QR Code Card (bottom-right) -->
@@ -156,7 +180,6 @@
         android:padding="8dp">
 
         <ImageView
-            android:id="@+id/imgQrCode"
             android:layout_width="120dp"
             android:layout_height="120dp"
             android:scaleType="fitCenter"
@@ -166,8 +189,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:fontFamily="@font/space_grotesk_bold"
-                android:tag="bold"
+            android:tag="bold"
             android:text="Scan to Visit"
             android:textColor="@color/accent_red"
             android:textSize="14sp" />
@@ -175,7 +197,6 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:fontFamily="@font/space_grotesk_regular"
             android:text="INVESTMENTCAM.COM"
             android:textColor="@color/accent_red"
             android:textSize="11sp" />
@@ -183,20 +204,17 @@
 
     <!-- Bottom Bar (36dp) -->
     <FrameLayout
-        android:id="@+id/bottomBar"
         android:layout_width="match_parent"
         android:layout_height="36dp"
         android:layout_gravity="bottom"
         android:background="@color/navy">
 
         <TextView
-            android:id="@+id/tvFooterVersion"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="24dp"
             android:layout_marginTop="11dp"
-            android:fontFamily="@font/space_grotesk_regular"
-            android:text="ActivePark Parking System v1.1"
+            android:text="ActivePark Parking System v1.0"
             android:textColor="@color/white_70"
             android:textSize="11sp" />
 
@@ -209,7 +227,6 @@
             android:orientation="horizontal">
 
             <ImageView
-                android:id="@+id/imgWifi"
                 android:layout_width="12dp"
                 android:layout_height="12dp"
                 android:src="@drawable/ic_wifi"
@@ -221,7 +238,6 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="6dp"
-                android:fontFamily="@font/space_grotesk_regular"
                 android:text="Connected"
                 android:textColor="@color/white_70"
                 android:textSize="11sp" />

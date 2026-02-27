@@ -56,8 +56,9 @@ sealed class PaapEvent(val timestamp: Long = System.currentTimeMillis()) {
 
     data class Unknown(
         val rawJson: String,
-        val direction: Direction
-    ) : PaapEvent()
+        val direction: Direction,
+        val ts: Long = System.currentTimeMillis()
+    ) : PaapEvent(ts)
 
     fun summary(): String = when (this) {
         is GateOpen -> "GATE OPEN (delay=${delay}ms, io=$io)"

@@ -4,6 +4,7 @@
 
     <uses-permission android:name="android.permission.READ_LOGS" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:allowBackup="true"
@@ -23,13 +24,23 @@
             </intent-filter>
         </activity>
 
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
         <service
             android:name=".LogcatReaderService"
-            android:exported="false" />
+            android:exported="false"
+            android:stopWithTask="false" />
 
         <service
             android:name=".OverlayService"
-            android:exported="false" />
+            android:exported="false"
+            android:stopWithTask="false" />
     </application>
 
 </manifest>

@@ -8,6 +8,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import java.io.BufferedReader
+import java.io.File
 import java.io.InputStreamReader
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -17,11 +18,13 @@ class LogcatReaderService : Service() {
         private const val TAG = "LogcatReader"
         private val _events = MutableSharedFlow<PaapEvent>(extraBufferCapacity = 64)
         val events: SharedFlow<PaapEvent> = _events
+        var eventLog: EventLog? = null
 
         fun injectLine(line: String) {
             val event = PaapEventParser.parseLine(line)
             if (event != null) {
                 _events.tryEmit(event)
+                eventLog?.append(event)
             }
         }
     }
@@ -34,6 +37,7 @@ class LogcatReaderService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (started.compareAndSet(false, true)) {
+            eventLog = EventLog.create(File(filesDir, "logs"))
             startReading()
         }
         return START_STICKY
@@ -74,6 +78,7 @@ class LogcatReaderService : Service() {
                 line = reader.readLine() ?: break
                 val event = PaapEventParser.parseLine(line) ?: continue
                 _events.emit(event)
+                eventLog?.append(event)
             }
         } finally {
             reader.close()

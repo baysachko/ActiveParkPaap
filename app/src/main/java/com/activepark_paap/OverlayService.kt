@@ -1,7 +1,10 @@
 package com.activepark_paap
 
+import android.app.AlarmManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
@@ -9,14 +12,18 @@ import android.util.Log
 import android.view.*
 import android.widget.Button
 import android.widget.FrameLayout
-import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.activepark_paap.ui.entry.EntryIdleView
+import com.activepark_paap.ui.entry.EntryTransactionView
+import com.activepark_paap.ui.exit.CompletedExitView
+import com.activepark_paap.ui.exit.ExitTransactionView
 import kotlinx.coroutines.*
 
 class OverlayService : Service() {
+
+    enum class Page { IDLE, EXIT_IDLE, TRANSACTION, EXIT_TRANSACTION, COMPLETED_EXIT, DEBUG }
 
     private var windowManager: WindowManager? = null
     private var rootContainer: FrameLayout? = null
@@ -25,13 +32,22 @@ class OverlayService : Service() {
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     private var idleView: EntryIdleView? = null
+    private var exitIdleView: EntryIdleView? = null
+    private var transactionView: EntryTransactionView? = null
+    private var exitTransactionView: ExitTransactionView? = null
+    private var completedExitView: CompletedExitView? = null
     private var debugView: View? = null
-    private var showingDebug = false
+    private var currentPage = Page.IDLE
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        return START_STICKY
+    }
+
     override fun onCreate() {
         super.onCreate()
+        loadEventHistory()
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         createOverlay()
         collectEvents()
@@ -59,8 +75,12 @@ class OverlayService : Service() {
         params.gravity = Gravity.TOP or Gravity.START
 
         setupIdleView()
+        setupExitIdleView()
+        setupTransactionView()
+        setupExitTransactionView()
+        setupCompletedExitView()
         setupDebugView()
-        showIdle()
+        showPage(Page.IDLE)
 
         try {
             windowManager!!.addView(rootContainer, params)
@@ -74,7 +94,45 @@ class OverlayService : Service() {
     private fun setupIdleView() {
         idleView = EntryIdleView(this)
         idleView!!.startClock(scope)
-        idleView!!.onDebugRequested = { showDebug() }
+        idleView!!.onDebugRequested = { showPage(Page.DEBUG) }
+    }
+
+    private fun setupExitIdleView() {
+        exitIdleView = EntryIdleView(this)
+        exitIdleView!!.startClock(scope)
+        exitIdleView!!.setMode(isExit = true)
+        exitIdleView!!.onDebugRequested = { showPage(Page.DEBUG) }
+    }
+
+    private fun setupTransactionView() {
+        transactionView = EntryTransactionView(this)
+        transactionView!!.startClock(scope)
+        transactionView!!.onDebugRequested = { showPage(Page.DEBUG) }
+        // Sample data
+        transactionView!!.setPlate("CB12345")
+        transactionView!!.setTypeBadge("TEMPORARY")
+        transactionView!!.setEntryDate("27-02-2026")
+        transactionView!!.setStatusLabel("WELCOME", Color.parseColor("#010062"))
+    }
+
+    private fun setupExitTransactionView() {
+        exitTransactionView = ExitTransactionView(this)
+        exitTransactionView!!.startClock(scope)
+        exitTransactionView!!.onDebugRequested = { showPage(Page.DEBUG) }
+        // Sample data
+        exitTransactionView!!.setPlate("CB12345")
+        exitTransactionView!!.setParkingTime("02:35:12")
+        exitTransactionView!!.setPayAmount("$4.00")
+        exitTransactionView!!.setStatusLabel("EXITING", Color.parseColor("#E8A000"))
+    }
+
+    private fun setupCompletedExitView() {
+        completedExitView = CompletedExitView(this)
+        completedExitView!!.startClock(scope)
+        completedExitView!!.onDebugRequested = { showPage(Page.DEBUG) }
+        completedExitView!!.setPlate("CB12345")
+        completedExitView!!.setTypeBadge("TEMPORARY")
+        completedExitView!!.setExitDate("02/27/26 14:32:05")
     }
 
     private fun setupDebugView() {
@@ -98,42 +156,73 @@ class OverlayService : Service() {
         }
 
         debugView!!.findViewById<Button>(R.id.btnBack).setOnClickListener {
-            showIdle()
+            showPage(if (currentPage == Page.DEBUG) Page.IDLE else currentPage)
         }
 
         debugView!!.findViewById<Button>(R.id.btnClose).setOnClickListener {
             stopSelf()
         }
 
+        debugView!!.findViewById<Button>(R.id.btnPageIdle).setOnClickListener {
+            showPage(Page.IDLE)
+        }
+
+        debugView!!.findViewById<Button>(R.id.btnPageTransaction).setOnClickListener {
+            showPage(Page.TRANSACTION)
+        }
+
+        debugView!!.findViewById<Button>(R.id.btnPageExitIdle).setOnClickListener {
+            showPage(Page.EXIT_IDLE)
+        }
+
+        debugView!!.findViewById<Button>(R.id.btnPageExitTxn).setOnClickListener {
+            showPage(Page.EXIT_TRANSACTION)
+        }
+
+        debugView!!.findViewById<Button>(R.id.btnPageComplete).setOnClickListener {
+            showPage(Page.COMPLETED_EXIT)
+        }
+
         updateDebugVisibility(tvEmpty, recycler)
     }
 
-    private fun showIdle() {
+    fun showPage(page: Page) {
         assert(rootContainer != null) { "rootContainer null" }
-        assert(idleView != null) { "idleView null" }
+        val targetView = when (page) {
+            Page.IDLE -> {
+                assert(idleView != null) { "idleView null" }
+                idleView!!.view
+            }
+            Page.EXIT_IDLE -> {
+                assert(exitIdleView != null) { "exitIdleView null" }
+                exitIdleView!!.view
+            }
+            Page.TRANSACTION -> {
+                assert(transactionView != null) { "transactionView null" }
+                transactionView!!.view
+            }
+            Page.EXIT_TRANSACTION -> {
+                assert(exitTransactionView != null) { "exitTransactionView null" }
+                exitTransactionView!!.view
+            }
+            Page.COMPLETED_EXIT -> {
+                assert(completedExitView != null) { "completedExitView null" }
+                completedExitView!!.view
+            }
+            Page.DEBUG -> {
+                assert(debugView != null) { "debugView null" }
+                debugView!!
+            }
+        }
         rootContainer!!.removeAllViews()
         rootContainer!!.addView(
-            idleView!!.view,
+            targetView,
             FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
             )
         )
-        showingDebug = false
-    }
-
-    private fun showDebug() {
-        assert(rootContainer != null) { "rootContainer null" }
-        assert(debugView != null) { "debugView null" }
-        rootContainer!!.removeAllViews()
-        rootContainer!!.addView(
-            debugView,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT
-            )
-        )
-        showingDebug = true
+        currentPage = page
     }
 
     @Suppress("DEPRECATION")
@@ -151,7 +240,7 @@ class OverlayService : Service() {
                     true
                 }
                 Log.d("OverlayService", "PAAP resumed: $paapResumed")
-                if (showingDebug) {
+                if (currentPage == Page.DEBUG) {
                     val warning = debugView?.findViewById<TextView>(R.id.tvPaapWarning)
                     warning?.visibility = if (paapResumed) View.GONE else View.VISIBLE
                 }
@@ -166,7 +255,7 @@ class OverlayService : Service() {
                 events.add(0, event)
                 if (events.size > 200) events.subList(200, events.size).clear()
                 adapter.notifyDataSetChanged()
-                if (showingDebug) {
+                if (currentPage == Page.DEBUG) {
                     val recycler = debugView?.findViewById<RecyclerView>(R.id.recyclerEvents)
                     val tvEmpty = debugView?.findViewById<TextView>(R.id.tvEmpty)
                     recycler?.scrollToPosition(0)
@@ -204,10 +293,33 @@ class OverlayService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        scheduleRestart()
         scope.cancel()
         if (rootContainer != null) {
             windowManager?.removeView(rootContainer)
             rootContainer = null
         }
+    }
+
+    private fun loadEventHistory() {
+        val logDir = java.io.File(filesDir, "logs")
+        if (!logDir.exists()) return
+        val log = EventLog(logDir)
+        val history = log.loadToday()
+        if (history.isNotEmpty()) {
+            events.addAll(history.reversed())
+        }
+    }
+
+    private fun scheduleRestart() {
+        val restartIntent = Intent(this, BootReceiver::class.java).apply {
+            action = BootReceiver.ACTION_RESTART
+        }
+        val pending = PendingIntent.getBroadcast(
+            this, 0, restartIntent, 0
+        )
+        val alarm = getSystemService(ALARM_SERVICE) as AlarmManager
+        alarm.set(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + 8000, pending)
+        Log.e("OverlayService", "Restart scheduled in 3s")
     }
 }

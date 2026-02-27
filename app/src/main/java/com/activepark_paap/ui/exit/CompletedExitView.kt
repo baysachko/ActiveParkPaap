@@ -1,4 +1,4 @@
-package com.activepark_paap.ui.entry
+package com.activepark_paap.ui.exit
 
 import android.content.Context
 import android.view.LayoutInflater
@@ -10,15 +10,17 @@ import kotlinx.coroutines.*
 import java.text.SimpleDateFormat
 import java.util.*
 
-class EntryIdleView(context: Context) {
+class CompletedExitView(context: Context) {
 
     val view: View = LayoutInflater.from(context)
-        .inflate(R.layout.overlay_entry_idle, null)
+        .inflate(R.layout.overlay_completed_exit, null)
 
     private val tvTime: TextView = view.findViewById(R.id.tvTime)
     private val tvDate: TextView = view.findViewById(R.id.tvDate)
     private val tvNetStatus: TextView = view.findViewById(R.id.tvNetStatus)
-    private val tvWelcome: TextView = view.findViewById(R.id.tvWelcome)
+    private val tvPlate: TextView = view.findViewById(R.id.tvPlate)
+    private val tvTypeBadge: TextView = view.findViewById(R.id.tvTypeBadge)
+    private val tvExitDate: TextView = view.findViewById(R.id.tvExitDate)
 
     private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
     private val dateFormat = SimpleDateFormat("EEEE, dd MMM yyyy", Locale.ENGLISH)
@@ -58,8 +60,19 @@ class EntryIdleView(context: Context) {
         }
     }
 
-    fun setMode(isExit: Boolean) {
-        tvWelcome.text = if (isExit) "GOODBYE" else "WELCOME"
+    fun setPlate(text: String) {
+        assert(text.isNotEmpty()) { "plate text empty" }
+        tvPlate.text = text
+    }
+
+    fun setTypeBadge(text: String) {
+        assert(text.isNotEmpty()) { "badge text empty" }
+        tvTypeBadge.text = text
+    }
+
+    fun setExitDate(text: String) {
+        assert(text.isNotEmpty()) { "exit date empty" }
+        tvExitDate.text = text
     }
 
     fun setNetworkStatus(connected: Boolean) {
