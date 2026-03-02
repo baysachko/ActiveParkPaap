@@ -14,23 +14,57 @@ object AdbRemoteHelper {
     private const val PREFS = "adb_remote"
     private const val KEY_SERVER_IP = "server_ip"
 
+    private val IP_REGEX = Regex("^([0-9]{1,3}\\.){3}[0-9]{1,3}$")
+    private val OCTET_RANGE = 0..255
+
+    /** Pure: validate IPv4 address format + octet range */
+    fun isValidIp(ip: String): Boolean {
+        if (!ip.matches(IP_REGEX)) return false
+        return ip.split(".").all { it.toIntOrNull() in OCTET_RANGE }
+    }
+
+    /** Pure: iptables commands to lock adb port to a single IP */
+    fun buildFirewallCommands(ip: String, port: Int = ADB_PORT): List<String> {
+        assert(isValidIp(ip)) { "invalid IP: $ip" }
+        return listOf(
+            "iptables -D INPUT -p tcp --dport $port -j DROP 2>/dev/null; true",
+            "iptables -D INPUT -p tcp --dport $port -s $ip -j ACCEPT 2>/dev/null; true",
+            "iptables -I INPUT -p tcp --dport $port -s $ip -j ACCEPT",
+            "iptables -A INPUT -p tcp --dport $port -j DROP"
+        )
+    }
+
+    /** Pure: commands to enable adb TCP on given port */
+    fun buildAdbEnableCommands(port: Int = ADB_PORT): List<String> {
+        return listOf(
+            "setprop service.adb.tcp.port $port",
+            "stop adbd",
+            "start adbd"
+        )
+    }
+
+    /** Pure: commands to disable adb TCP */
+    fun buildAdbDisableCommands(port: Int = ADB_PORT): List<String> {
+        return listOf(
+            "setprop service.adb.tcp.port -1",
+            "stop adbd",
+            "start adbd"
+        )
+    }
+
     fun getSavedIp(ctx: Context): String {
         val ip = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(KEY_SERVER_IP, "") ?: ""
-        assert(ip.isEmpty() || ip.matches(Regex("^[0-9.]+$"))) { "invalid saved IP: $ip" }
+        assert(ip.isEmpty() || isValidIp(ip)) { "invalid saved IP: $ip" }
         return ip
     }
 
     fun saveIp(ctx: Context, ip: String) {
-        assert(ip.matches(Regex("^[0-9]{1,3}(\\.[0-9]{1,3}){3}$"))) { "invalid IP format: $ip" }
+        assert(isValidIp(ip)) { "invalid IP format: $ip" }
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putString(KEY_SERVER_IP, ip).apply()
     }
 
-    /**
-     * Enable adb TCP + lock down with iptables. Call on boot or after saving IP.
-     * Returns true if server IP was configured and commands executed.
-     */
     fun enableAdbWithFirewall(ctx: Context): Boolean {
         val ip = getSavedIp(ctx)
         if (ip.isEmpty()) {
@@ -41,19 +75,12 @@ object AdbRemoteHelper {
     }
 
     fun enableAdbWithFirewall(ip: String): Boolean {
-        assert(ip.matches(Regex("^[0-9]{1,3}(\\.[0-9]{1,3}){3}$"))) { "invalid IP: $ip" }
+        assert(isValidIp(ip)) { "invalid IP: $ip" }
         return try {
-            // Only restart adbd if not already on TCP — avoids killing active scrcpy sessions
             if (!isAdbEnabled()) {
-                exec("setprop service.adb.tcp.port $ADB_PORT")
-                exec("stop adbd")
-                exec("start adbd")
+                buildAdbEnableCommands().forEach { exec(it) }
             }
-            // Firewall: flush old rules for adb port, allow only server IP
-            exec("iptables -D INPUT -p tcp --dport $ADB_PORT -j DROP 2>/dev/null; true")
-            exec("iptables -D INPUT -p tcp --dport $ADB_PORT -s $ip -j ACCEPT 2>/dev/null; true")
-            exec("iptables -I INPUT -p tcp --dport $ADB_PORT -s $ip -j ACCEPT")
-            exec("iptables -A INPUT -p tcp --dport $ADB_PORT -j DROP")
+            buildFirewallCommands(ip).forEach { exec(it) }
             Log.e(TAG, "adb TCP enabled, locked to $ip")
             true
         } catch (e: Exception) {
@@ -64,10 +91,7 @@ object AdbRemoteHelper {
 
     fun disableAdb(): Boolean {
         return try {
-            exec("setprop service.adb.tcp.port -1")
-            exec("stop adbd")
-            exec("start adbd")
-            // Clean up iptables rules
+            buildAdbDisableCommands().forEach { exec(it) }
             exec("iptables -D INPUT -p tcp --dport $ADB_PORT -j DROP 2>/dev/null; true")
             exec("iptables -D INPUT -p tcp --dport $ADB_PORT -j ACCEPT 2>/dev/null; true")
             Log.e(TAG, "adb TCP disabled")
