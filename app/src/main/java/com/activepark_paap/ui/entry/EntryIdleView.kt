@@ -19,6 +19,6 @@ class EntryIdleView(context: Context) {
     }
 
     fun setMode(isExit: Boolean) {
-        tvWelcome.text = if (isExit) "GOODBYE" else "WELCOME"
+        tvWelcome.text = if (isExit) "GoodBye" else "Welcome"
     }
 }

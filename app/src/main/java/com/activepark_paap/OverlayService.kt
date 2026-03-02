@@ -21,16 +21,11 @@ import com.activepark_paap.ui.exit.CompletedExitView
 import com.activepark_paap.ui.exit.ExitTransactionView
 import kotlinx.coroutines.*
 
+private typealias Page = PageRouter.Page
+
 class OverlayService : Service() {
 
-    enum class Page { IDLE, EXIT_IDLE, TRANSACTION, EXIT_TRANSACTION, COMPLETED_EXIT, DEBUG }
-
-    companion object {
-        private val ACTIVE_CALL_STATES = setOf(
-            "CallIncomingReceived", "CallConnected", "CallStreamsRunning",
-            "CallOutgoingInit", "CallOutgoingProgress", "CallOutgoingRinging"
-        )
-    }
+    companion object
 
     private var windowManager: WindowManager? = null
     private var rootView: View? = null
@@ -194,7 +189,7 @@ class OverlayService : Service() {
             val next = if (current == "entry") "exit" else "entry"
             rolePrefs.edit().putString("role", next).apply()
             updateRoleBtn()
-            showPage(if (next == "exit") Page.EXIT_IDLE else Page.IDLE)
+            showPage(PageRouter.initialPageForRole(next))
         }
 
         debugView!!.findViewById<Button>(R.id.btnClose).setOnClickListener {
@@ -308,7 +303,7 @@ class OverlayService : Service() {
                         "dumpsys activity activities | grep mResumedActivity"))
                     val output = proc.inputStream.bufferedReader().readText()
                     proc.waitFor()
-                    output.contains("com.anziot.park")
+                    PageRouter.isPaapResumed(output)
                 } catch (e: Exception) {
                     Log.e("OverlayService", "dumpsys failed", e)
                     true
@@ -331,7 +326,7 @@ class OverlayService : Service() {
                 adapter.notifyDataSetChanged()
                 if (event is PaapEvent.DisplayUpdate) handleDisplayUpdate(event)
                 if (event is PaapEvent.LinphoneCall) {
-                    callActive = event.toState in ACTIVE_CALL_STATES
+                    callActive = PageRouter.isCallActive(event.toState)
                     barHelper?.setCallActive(callActive)
                 }
                 if (currentPage == Page.DEBUG) {
@@ -360,34 +355,28 @@ class OverlayService : Service() {
         val role = getSharedPreferences("box_state", MODE_PRIVATE)
             .getString("role", "entry") ?: "entry"
 
-        val page = if (role == "entry") {
-            when {
-                text1.contains("Welcome", ignoreCase = true) -> Page.IDLE
-                else -> {
-                    transactionView!!.setPlate(text1)
-                    if (text3.isNotEmpty()) transactionView!!.setTypeBadge(text3.uppercase())
-                    if (text4.isNotEmpty()) transactionView!!.setEntryDate(text4)
-                    transactionView!!.setStatusLabel("WELCOME", Color.parseColor("#010062"))
-                    Page.TRANSACTION
-                }
+        val page = PageRouter.decidePage(text1, text3, text4, role) ?: return
+
+        // Apply side effects based on decided page
+        when (page) {
+            Page.TRANSACTION -> {
+                transactionView!!.setPlate(text1)
+                if (text3.isNotEmpty()) transactionView!!.setTypeBadge(text3.uppercase())
+                if (text4.isNotEmpty()) transactionView!!.setEntryDate(text4)
+                transactionView!!.setStatusLabel("WELCOME", Color.parseColor("#010062"))
             }
-        } else {
-            when {
-                text1.contains("GoodBye", ignoreCase = true) -> Page.EXIT_IDLE
-                text3.contains("Parking time", ignoreCase = true) -> {
-                    exitTransactionView!!.setPlate(text1)
-                    exitTransactionView!!.setParkingTime(text3.substringAfter(":").trim())
-                    exitTransactionView!!.setPayAmount(text4.substringAfter(":").trim())
-                    exitTransactionView!!.setStatusLabel("EXITING", Color.parseColor("#E8A000"))
-                    Page.EXIT_TRANSACTION
-                }
-                else -> {
-                    completedExitView!!.setPlate(text1)
-                    completedExitView!!.setTypeBadge(text3.uppercase())
-                    completedExitView!!.setExitDate(text4)
-                    Page.COMPLETED_EXIT
-                }
+            Page.EXIT_TRANSACTION -> {
+                exitTransactionView!!.setPlate(text1)
+                exitTransactionView!!.setParkingTime(text3.substringAfter(":").trim())
+                exitTransactionView!!.setPayAmount(text4.substringAfter(":").trim())
+                exitTransactionView!!.setStatusLabel("EXITING", Color.parseColor("#E8A000"))
             }
+            Page.COMPLETED_EXIT -> {
+                completedExitView!!.setPlate(text1)
+                completedExitView!!.setTypeBadge(text3.uppercase())
+                completedExitView!!.setExitDate(text4)
+            }
+            else -> { /* IDLE, EXIT_IDLE — no view updates needed */ }
         }
 
         showPage(page)
@@ -396,7 +385,7 @@ class OverlayService : Service() {
     private fun restoreRole() {
         val role = getSharedPreferences("box_state", MODE_PRIVATE)
             .getString("role", "entry") ?: "entry"
-        if (role == "exit") showPage(Page.EXIT_IDLE)
+        showPage(PageRouter.initialPageForRole(role))
     }
 
     private fun updateDebugVisibility(tvEmpty: TextView, recycler: RecyclerView) {

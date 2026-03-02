@@ -6,16 +6,24 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
-class EventLog(private val logDir: File) {
+class EventLog(
+    private val logDir: File,
+    private val clock: () -> Long = System::currentTimeMillis,
+    private val logger: (String, String, Throwable?) -> Unit = { t, m, e -> Log.e(t, m, e) }
+) {
 
     companion object {
         private const val TAG = "EventLog"
         private const val MAX_DAYS = 7
         private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
 
-        fun create(logDir: File): EventLog {
+        fun create(
+            logDir: File,
+            clock: () -> Long = System::currentTimeMillis,
+            logger: (String, String, Throwable?) -> Unit = { t, m, e -> Log.e(t, m, e) }
+        ): EventLog {
             assert(logDir.exists() || logDir.mkdirs()) { "EventLog: can't create logDir" }
-            val log = EventLog(logDir)
+            val log = EventLog(logDir, clock, logger)
             log.pruneOldFiles()
             return log
         }
@@ -27,7 +35,7 @@ class EventLog(private val logDir: File) {
             val json = eventToJson(event)
             todayFile().appendText(json.toString() + "\n")
         } catch (e: Exception) {
-            Log.e(TAG, "append failed", e)
+            logger(TAG, "append failed", e)
         }
     }
 
@@ -97,17 +105,17 @@ class EventLog(private val logDir: File) {
                     val event = parseJsonLine(line)
                     if (event != null) results.add(event)
                 } catch (e: Exception) {
-                    Log.e(TAG, "parse failed: $line", e)
+                    logger(TAG, "parse failed: $line", e)
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "loadFile failed", e)
+            logger(TAG, "loadFile failed", e)
         }
         return results
     }
 
     fun pruneOldFiles() {
-        val cutoff = System.currentTimeMillis() - (MAX_DAYS * 24 * 60 * 60 * 1000L)
+        val cutoff = clock() - (MAX_DAYS * 24 * 60 * 60 * 1000L)
         val files = logDir.listFiles() ?: return
         for (file in files) {
             if (!file.name.startsWith("events_")) continue
@@ -116,7 +124,7 @@ class EventLog(private val logDir: File) {
                 val fileDate = dateFormat.parse(dateStr) ?: continue
                 if (fileDate.time < cutoff) {
                     file.delete()
-                    Log.e(TAG, "Pruned old log: ${file.name}")
+                    logger(TAG, "Pruned old log: ${file.name}", null)
                 }
             } catch (_: Exception) { }
         }

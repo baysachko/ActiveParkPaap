@@ -38,10 +38,21 @@ class LogcatReaderService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (started.compareAndSet(false, true)) {
+            grantReadLogs()
             eventLog = EventLog.create(File(filesDir, "logs"))
             startReading()
         }
         return START_STICKY
+    }
+
+    private fun grantReadLogs() {
+        try {
+            val proc = Runtime.getRuntime().exec(arrayOf("su", "-c",
+                "pm grant com.activepark_paap android.permission.READ_LOGS"))
+            proc.waitFor()
+        } catch (e: Exception) {
+            Log.e(TAG, "self-grant READ_LOGS failed", e)
+        }
     }
 
     private fun startReading() {
