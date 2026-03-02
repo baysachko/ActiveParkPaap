@@ -42,6 +42,7 @@ Sits on top of PAAP (`com.anziot.park`) — the Chinese parking app that handles
 - `GuardService.kt` — watchdog in `:guard` process. Uses `GuardWatchdog` for pure restart logic.
 - `GuardWatchdog.kt` — testable restart logic. 8s debounce, `killed` flag for pause.
 - `EventLog.kt` — JSONL event persistence. 7 daily files, auto-prune. Testable class (inject `logDir`).
+- `AdbRemoteHelper.kt` — enables adb TCP :5555 + iptables firewall to saved server IP. Used by BootReceiver (on boot) and debug UI (on save).
 
 ## UI Screens (Page enum in OverlayService)
 
@@ -86,6 +87,15 @@ Frames: `Hdmbk` (Entry Idle), `bMAUt` (Transaction Entry), `bJGHf` (Exit Idle), 
 - `LogcatReaderService` appends events on receive
 - `OverlayService` loads today's history on startup → debug view shows past events
 - Class-based (not singleton) for testability — inject `logDir` via constructor
+
+## Remote Access (ADB + scrcpy)
+
+- **AdbRemoteHelper.kt** — enables adb TCP on port 5555, locks with iptables to a single server IP. Persisted in `SharedPreferences("adb_remote", "server_ip")`.
+- **BootReceiver** calls `AdbRemoteHelper.enableAdbWithFirewall(context)` on boot — adb+iptables auto-restored after reboot.
+- **Debug screen** has Server IP field + Save button + ADB status indicator (green=active, red=off).
+- **One-time setup**: USB install → 6-tap debug → enter server IP → Save → walk away.
+- **Remote workflow**: AnyDesk → customer server (same LAN) → `adb connect box-ip:5555` → `scrcpy` for full UI control.
+- **Security**: iptables drops all connections to port 5555 except the saved server IP.
 
 ## Critical Warnings
 

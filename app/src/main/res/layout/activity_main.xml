@@ -156,6 +156,60 @@
             android:minWidth="80dp" />
     </LinearLayout>
 
+    <!-- ADB Remote Access -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="40dp"
+        android:orientation="horizontal"
+        android:background="#1A1A2E"
+        android:gravity="center_vertical"
+        android:paddingStart="16dp"
+        android:paddingEnd="8dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Server IP:"
+            android:textColor="#888888"
+            android:textSize="14sp" />
+
+        <EditText
+            android:id="@+id/etServerIp"
+            android:layout_width="0dp"
+            android:layout_height="32dp"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:background="#333333"
+            android:hint="192.168.x.x"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#666666"
+            android:textSize="14sp"
+            android:inputType="text"
+            android:singleLine="true"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp" />
+
+        <Button
+            android:id="@+id/btnSaveIp"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:layout_marginStart="4dp"
+            android:text="Save"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#388E3C"
+            android:minWidth="60dp" />
+
+        <TextView
+            android:id="@+id/tvAdbStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="ADB:OFF"
+            android:textColor="#FF5555"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
     <TextView
         android:id="@+id/tvPaapWarning"
         android:layout_width="match_parent"

@@ -9,6 +9,7 @@ import android.os.IBinder
 import android.util.Log
 import android.view.*
 import android.widget.Button
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -190,6 +191,33 @@ class OverlayService : Service() {
             rolePrefs.edit().putString("role", next).apply()
             updateRoleBtn()
             showPage(PageRouter.initialPageForRole(next))
+        }
+
+        // ADB remote access — server IP config
+        val etServerIp = debugView!!.findViewById<EditText>(R.id.etServerIp)
+        val btnSaveIp = debugView!!.findViewById<Button>(R.id.btnSaveIp)
+        val tvAdbStatus = debugView!!.findViewById<TextView>(R.id.tvAdbStatus)
+
+        fun updateAdbStatus() {
+            val enabled = AdbRemoteHelper.isAdbEnabled()
+            val ip = AdbRemoteHelper.getSavedIp(this)
+            tvAdbStatus.text = if (enabled && ip.isNotEmpty()) "ADB:$ip" else "ADB:OFF"
+            tvAdbStatus.setTextColor(Color.parseColor(if (enabled) "#22C55E" else "#FF5555"))
+        }
+        etServerIp.setText(AdbRemoteHelper.getSavedIp(this))
+        updateAdbStatus()
+
+        btnSaveIp.setOnClickListener {
+            val ip = etServerIp.text.toString().trim()
+            if (ip.matches(Regex("^[0-9]{1,3}(\\.[0-9]{1,3}){3}$"))) {
+                AdbRemoteHelper.saveIp(this, ip)
+                scope.launch(Dispatchers.IO) {
+                    AdbRemoteHelper.enableAdbWithFirewall(ip)
+                    withContext(Dispatchers.Main) { updateAdbStatus() }
+                }
+            } else {
+                etServerIp.setError("Invalid IP")
+            }
         }
 
         debugView!!.findViewById<Button>(R.id.btnClose).setOnClickListener {

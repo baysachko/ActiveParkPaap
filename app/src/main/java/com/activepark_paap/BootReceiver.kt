@@ -16,6 +16,9 @@ class BootReceiver : BroadcastReceiver() {
         // Clear guard pause flag on boot
         @Suppress("DEPRECATION") context.getSharedPreferences("guard_state", Context.MODE_MULTI_PROCESS)
             .edit().putBoolean("paused", false).apply()
+        // Enable adb TCP locked to saved server IP (if configured)
+        AdbRemoteHelper.enableAdbWithFirewall(context)
+
         context.startService(Intent(context, LogcatReaderService::class.java))
         context.startService(Intent(context, OverlayService::class.java))
         context.startService(Intent(context, GuardService::class.java))
