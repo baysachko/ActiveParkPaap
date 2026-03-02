@@ -43,10 +43,12 @@ object AdbRemoteHelper {
     fun enableAdbWithFirewall(ip: String): Boolean {
         assert(ip.matches(Regex("^[0-9]{1,3}(\\.[0-9]{1,3}){3}$"))) { "invalid IP: $ip" }
         return try {
-            // Enable adb TCP
-            exec("setprop service.adb.tcp.port $ADB_PORT")
-            exec("stop adbd")
-            exec("start adbd")
+            // Only restart adbd if not already on TCP — avoids killing active scrcpy sessions
+            if (!isAdbEnabled()) {
+                exec("setprop service.adb.tcp.port $ADB_PORT")
+                exec("stop adbd")
+                exec("start adbd")
+            }
             // Firewall: flush old rules for adb port, allow only server IP
             exec("iptables -D INPUT -p tcp --dport $ADB_PORT -j DROP 2>/dev/null; true")
             exec("iptables -D INPUT -p tcp --dport $ADB_PORT -s $ip -j ACCEPT 2>/dev/null; true")
