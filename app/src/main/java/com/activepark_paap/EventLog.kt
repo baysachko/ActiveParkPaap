@@ -47,6 +47,18 @@ class EventLog(private val logDir: File) {
         put("type", event.javaClass.simpleName)
         put("dir", event.directionLabel())
         put("summary", event.summary())
+        if (event is PaapEvent.DisplayUpdate) {
+            val textsObj = JSONObject()
+            for ((key, field) in event.texts) {
+                textsObj.put(key, JSONObject().apply {
+                    put("text", field.text)
+                    put("color", field.color)
+                    put("size", field.size)
+                    put("gravity", field.gravity)
+                })
+            }
+            put("texts", textsObj)
+        }
     }
 
     fun parseJsonLine(line: String): PaapEvent? {
@@ -55,6 +67,23 @@ class EventLog(private val logDir: File) {
         val ts = json.getLong("ts")
         val dir = if (json.getString("dir") == "INBOUND")
             PaapEvent.Direction.INBOUND else PaapEvent.Direction.OUTBOUND
+        val type = json.optString("type", "Unknown")
+
+        if (type == "DisplayUpdate" && json.has("texts")) {
+            val textsObj = json.getJSONObject("texts")
+            val texts = mutableMapOf<String, PaapEvent.DisplayField>()
+            for (key in textsObj.keys()) {
+                val f = textsObj.getJSONObject(key)
+                texts[key] = PaapEvent.DisplayField(
+                    text = f.optString("text", ""),
+                    color = f.optString("color", ""),
+                    size = f.optInt("size", 0),
+                    gravity = f.optString("gravity", "")
+                )
+            }
+            return PaapEvent.DisplayUpdate(texts = texts, direction = dir)
+        }
+
         val summary = json.getString("summary")
         return PaapEvent.Unknown(rawJson = summary, direction = dir, ts = ts)
     }

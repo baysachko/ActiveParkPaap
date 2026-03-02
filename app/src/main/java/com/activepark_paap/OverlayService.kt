@@ -1,7 +1,5 @@
 package com.activepark_paap
 
-import android.app.AlarmManager
-import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.graphics.Color
@@ -42,7 +40,7 @@ class OverlayService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     override fun onCreate() {
@@ -51,6 +49,7 @@ class OverlayService : Service() {
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         createOverlay()
         collectEvents()
+        restoreRole()
         monitorPaap()
     }
 
@@ -108,31 +107,18 @@ class OverlayService : Service() {
         transactionView = EntryTransactionView(this)
         transactionView!!.startClock(scope)
         transactionView!!.onDebugRequested = { showPage(Page.DEBUG) }
-        // Sample data
-        transactionView!!.setPlate("CB12345")
-        transactionView!!.setTypeBadge("TEMPORARY")
-        transactionView!!.setEntryDate("27-02-2026")
-        transactionView!!.setStatusLabel("WELCOME", Color.parseColor("#010062"))
     }
 
     private fun setupExitTransactionView() {
         exitTransactionView = ExitTransactionView(this)
         exitTransactionView!!.startClock(scope)
         exitTransactionView!!.onDebugRequested = { showPage(Page.DEBUG) }
-        // Sample data
-        exitTransactionView!!.setPlate("CB12345")
-        exitTransactionView!!.setParkingTime("02:35:12")
-        exitTransactionView!!.setPayAmount("$4.00")
-        exitTransactionView!!.setStatusLabel("EXITING", Color.parseColor("#E8A000"))
     }
 
     private fun setupCompletedExitView() {
         completedExitView = CompletedExitView(this)
         completedExitView!!.startClock(scope)
         completedExitView!!.onDebugRequested = { showPage(Page.DEBUG) }
-        completedExitView!!.setPlate("CB12345")
-        completedExitView!!.setTypeBadge("TEMPORARY")
-        completedExitView!!.setExitDate("02/27/26 14:32:05")
     }
 
     private fun setupDebugView() {
@@ -157,6 +143,48 @@ class OverlayService : Service() {
 
         debugView!!.findViewById<Button>(R.id.btnBack).setOnClickListener {
             showPage(if (currentPage == Page.DEBUG) Page.IDLE else currentPage)
+        }
+
+        val btnAuto = debugView!!.findViewById<Button>(R.id.btnAutoRestart)
+        val guardPrefs = getSharedPreferences("guard_state", MODE_PRIVATE)
+        val paused = guardPrefs.getBoolean("paused", false)
+        btnAuto.text = if (paused) "Auto:OFF" else "Auto:ON"
+        btnAuto.backgroundTintList = android.content.res.ColorStateList.valueOf(
+            if (paused) Color.parseColor("#666666") else Color.parseColor("#388E3C")
+        )
+        btnAuto.setOnClickListener {
+            val nowPaused = !guardPrefs.getBoolean("paused", false)
+            guardPrefs.edit().putBoolean("paused", nowPaused).apply()
+            if (nowPaused) {
+                startService(Intent(this, GuardService::class.java).apply {
+                    action = GuardService.ACTION_PAUSE
+                })
+            } else {
+                startService(Intent(this, GuardService::class.java))
+            }
+            btnAuto.text = if (nowPaused) "Auto:OFF" else "Auto:ON"
+            btnAuto.backgroundTintList = android.content.res.ColorStateList.valueOf(
+                if (nowPaused) Color.parseColor("#666666") else Color.parseColor("#388E3C")
+            )
+        }
+
+        // Role toggle button
+        val rolePrefs = getSharedPreferences("box_state", MODE_PRIVATE)
+        val btnRole = debugView!!.findViewById<Button>(R.id.btnRole)
+        fun updateRoleBtn() {
+            val role = rolePrefs.getString("role", "entry") ?: "entry"
+            btnRole.text = role.uppercase()
+            btnRole.backgroundTintList = android.content.res.ColorStateList.valueOf(
+                if (role == "entry") Color.parseColor("#010062") else Color.parseColor("#E8A000")
+            )
+        }
+        updateRoleBtn()
+        btnRole.setOnClickListener {
+            val current = rolePrefs.getString("role", "entry") ?: "entry"
+            val next = if (current == "entry") "exit" else "entry"
+            rolePrefs.edit().putString("role", next).apply()
+            updateRoleBtn()
+            showPage(if (next == "exit") Page.EXIT_IDLE else Page.IDLE)
         }
 
         debugView!!.findViewById<Button>(R.id.btnClose).setOnClickListener {
@@ -255,6 +283,7 @@ class OverlayService : Service() {
                 events.add(0, event)
                 if (events.size > 200) events.subList(200, events.size).clear()
                 adapter.notifyDataSetChanged()
+                if (event is PaapEvent.DisplayUpdate) handleDisplayUpdate(event)
                 if (currentPage == Page.DEBUG) {
                     val recycler = debugView?.findViewById<RecyclerView>(R.id.recyclerEvents)
                     val tvEmpty = debugView?.findViewById<TextView>(R.id.tvEmpty)
@@ -265,6 +294,59 @@ class OverlayService : Service() {
                 }
             }
         }
+    }
+
+    private fun handleDisplayUpdate(event: PaapEvent.DisplayUpdate) {
+        assert(transactionView != null) { "transactionView null in handleDisplayUpdate" }
+        assert(exitTransactionView != null) { "exitTransactionView null in handleDisplayUpdate" }
+        assert(completedExitView != null) { "completedExitView null in handleDisplayUpdate" }
+        if (currentPage == Page.DEBUG) return
+
+        val text1 = event.texts["text1"]?.text ?: return
+        val text3 = event.texts["text3"]?.text ?: ""
+        val text4 = event.texts["text4"]?.text ?: ""
+        Log.e("OverlayService", "DisplayUpdate text1=$text1 text3=$text3 text4=$text4")
+
+        val role = getSharedPreferences("box_state", MODE_PRIVATE)
+            .getString("role", "entry") ?: "entry"
+
+        val page = if (role == "entry") {
+            when {
+                text1.contains("Welcome", ignoreCase = true) -> Page.IDLE
+                else -> {
+                    transactionView!!.setPlate(text1)
+                    if (text3.isNotEmpty()) transactionView!!.setTypeBadge(text3.uppercase())
+                    if (text4.isNotEmpty()) transactionView!!.setEntryDate(text4)
+                    transactionView!!.setStatusLabel("WELCOME", Color.parseColor("#010062"))
+                    Page.TRANSACTION
+                }
+            }
+        } else {
+            when {
+                text1.contains("GoodBye", ignoreCase = true) -> Page.EXIT_IDLE
+                text3.contains("Parking time", ignoreCase = true) -> {
+                    exitTransactionView!!.setPlate(text1)
+                    exitTransactionView!!.setParkingTime(text3.substringAfter(":").trim())
+                    exitTransactionView!!.setPayAmount(text4.substringAfter(":").trim())
+                    exitTransactionView!!.setStatusLabel("EXITING", Color.parseColor("#E8A000"))
+                    Page.EXIT_TRANSACTION
+                }
+                else -> {
+                    completedExitView!!.setPlate(text1)
+                    completedExitView!!.setTypeBadge(text3.uppercase())
+                    completedExitView!!.setExitDate(text4.substringAfter(":").trim())
+                    Page.COMPLETED_EXIT
+                }
+            }
+        }
+
+        showPage(page)
+    }
+
+    private fun restoreRole() {
+        val role = getSharedPreferences("box_state", MODE_PRIVATE)
+            .getString("role", "entry") ?: "entry"
+        if (role == "exit") showPage(Page.EXIT_IDLE)
     }
 
     private fun updateDebugVisibility(tvEmpty: TextView, recycler: RecyclerView) {
@@ -293,7 +375,6 @@ class OverlayService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        scheduleRestart()
         scope.cancel()
         if (rootContainer != null) {
             windowManager?.removeView(rootContainer)
@@ -311,15 +392,4 @@ class OverlayService : Service() {
         }
     }
 
-    private fun scheduleRestart() {
-        val restartIntent = Intent(this, BootReceiver::class.java).apply {
-            action = BootReceiver.ACTION_RESTART
-        }
-        val pending = PendingIntent.getBroadcast(
-            this, 0, restartIntent, 0
-        )
-        val alarm = getSystemService(ALARM_SERVICE) as AlarmManager
-        alarm.set(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + 8000, pending)
-        Log.e("OverlayService", "Restart scheduled in 3s")
-    }
 }

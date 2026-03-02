@@ -47,6 +47,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun startOverlayAndFinish() {
         startService(Intent(this, OverlayService::class.java))
+        startService(Intent(this, GuardService::class.java))
         finish()
     }
 }
@@ -93,6 +94,7 @@ class EventAdapter(private val events: List<PaapEvent>) :
         is PaapEvent.PushButton -> Color.parseColor("#FF5722")
         is PaapEvent.Heartbeat -> Color.parseColor("#607D8B")
         is PaapEvent.OnlineCheck -> Color.parseColor("#607D8B")
+        is PaapEvent.LinphoneCall -> Color.parseColor("#4CAF50")
         is PaapEvent.Unknown -> Color.parseColor("#9E9E9E")
     }
 }

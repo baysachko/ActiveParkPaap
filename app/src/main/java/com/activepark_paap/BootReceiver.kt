@@ -13,7 +13,11 @@ class BootReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         Log.e("BootReceiver", "onReceive action=${intent.action}")
+        // Clear guard pause flag on boot
+        @Suppress("DEPRECATION") context.getSharedPreferences("guard_state", Context.MODE_MULTI_PROCESS)
+            .edit().putBoolean("paused", false).apply()
         context.startService(Intent(context, LogcatReaderService::class.java))
         context.startService(Intent(context, OverlayService::class.java))
+        context.startService(Intent(context, GuardService::class.java))
     }
 }

@@ -7,8 +7,8 @@ Sits on top of PAAP (`com.anziot.park`) — the Chinese parking app that handles
 
 - **PAAP** = invisible hardware layer (always running, GuardService auto-restarts it)
 - **Our app** = visible UI overlay via `SYSTEM_ALERT_WINDOW` (`TYPE_SYSTEM_ALERT` on API 22)
-- Reads PAAP's logcat (`PRETTY_LOGGER:E` tag) to intercept all UDP traffic
-- Parses JSON payloads into typed events (gate open, TTS, print, display, vehicle sensing, etc.)
+- Reads PAAP's logcat (`PRETTY_LOGGER:E` + `anziot:I` tags) to intercept UDP traffic and linphone call states
+- Parses JSON payloads into typed events (gate open, TTS, print, display, vehicle sensing, linphone call, etc.)
 - Zero interference with PAAP — read-only logcat
 
 ## Build
@@ -33,9 +33,9 @@ Sits on top of PAAP (`com.anziot.park`) — the Chinese parking app that handles
 
 ## Key Files
 
-- `LogcatReaderService.kt` — background logcat reader via `Runtime.exec("logcat", "-s", "PRETTY_LOGGER:E", "-T", "1")`. Uses AtomicBoolean to prevent duplicate processes. Drains stderr.
+- `LogcatReaderService.kt` — background logcat reader via `Runtime.exec("logcat", "-s", "PRETTY_LOGGER:E", "anziot:I", "-T", "1")`. Uses AtomicBoolean to prevent duplicate processes. Drains stderr.
 - `PaapEventParser.kt` — regex extracts JSON from `UdpManager:handleUdpReadData` (inbound) / `UdpWriterManager:send` (outbound), maps to typed events
-- `PaapEvent.kt` — sealed class: GateOpen, Speak, PrintTicket, DisplayUpdate, VehicleSensing, PushButton, Heartbeat, OnlineCheck, Unknown
+- `PaapEvent.kt` — sealed class: GateOpen, Speak, PrintTicket, DisplayUpdate, VehicleSensing, PushButton, Heartbeat, OnlineCheck, LinphoneCall, Unknown
 - `OverlayService.kt` — draws UI via WindowManager overlay. Uses `TYPE_APPLICATION_OVERLAY` on API 26+ (emulator), `TYPE_SYSTEM_ALERT` on API 22 (box). Monitors PAAP foreground state via `su -c "dumpsys activity activities"` every 5s — shows red warning banner when PAAP not resumed. Manages page switching via `Page` enum and `showPage()`.
 - `MainActivity.kt` — launcher: starts LogcatReaderService + OverlayService, then finishes. Handles overlay permission prompt on API 23+.
 - `BootReceiver.kt` — `BOOT_COMPLETED` + custom `ACTION_RESTART` receiver. Starts both services.
@@ -88,6 +88,7 @@ Frames: `Hdmbk` (Entry Idle), `bMAUt` (Transaction Entry), `bJGHf` (Exit Idle), 
 - **NO Jetpack Compose** — requires minSdk 23, box is API 22. Use XML views.
 - **PAAP must stay running** — it handles all hardware. Our app is overlay only. PAAP must be in foreground (resumed activity) for hardware to work.
 - **UDP timing**: Heartbeat every 10s, OnlineCheck every 60s.
+- **Linphone/SIP**: PAAP embeds linphone 4.5.0 for cashier↔box calls. Logs under `anziot:I` tag. Call state transitions: `CallIdle → CallIncomingReceived → CallConnected → CallStreamsRunning → CallEnd → CallReleased`. Outgoing: `CallIdle → CallOutgoingInit → CallOutgoingProgress → CallOutgoingRinging → CallEnd`.
 - Emulator vs box: emulator needs `TYPE_APPLICATION_OVERLAY` + Settings permission grant. Box needs `TYPE_SYSTEM_ALERT` + `appops set`.
 - **PAAP detection**: `getRunningTasks`/`getRunningAppProcesses` don't work (overlay steals focus, API restrictions). Only `su -c "dumpsys activity activities | grep mResumedActivity"` reliably detects PAAP foreground state on the rooted box.
 

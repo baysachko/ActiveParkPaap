@@ -5,6 +5,7 @@
     <uses-permission android:name="android.permission.READ_LOGS" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 
     <application
         android:allowBackup="true"
@@ -40,6 +41,12 @@
         <service
             android:name=".OverlayService"
             android:exported="false"
+            android:stopWithTask="false" />
+
+        <service
+            android:name=".GuardService"
+            android:exported="false"
+            android:process=":guard"
             android:stopWithTask="false" />
     </application>
 

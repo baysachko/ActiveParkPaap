@@ -53,6 +53,16 @@
             android:layout_marginStart="4dp" />
 
         <Button
+            android:id="@+id/btnAutoRestart"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:text="Auto:ON"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#388E3C"
+            android:minWidth="80dp"
+            android:layout_marginStart="4dp" />
+
+        <Button
             android:id="@+id/btnClose"
             android:layout_width="wrap_content"
             android:layout_height="36dp"
@@ -128,6 +138,21 @@
             android:text="Complete"
             android:textColor="#FFFFFF"
             android:backgroundTint="#444444"
+            android:minWidth="80dp" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+        <Button
+            android:id="@+id/btnRole"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:layout_marginStart="8dp"
+            android:text="ENTRY"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#010062"
             android:minWidth="80dp" />
     </LinearLayout>
 

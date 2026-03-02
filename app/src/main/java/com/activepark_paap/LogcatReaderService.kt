@@ -20,6 +20,7 @@ class LogcatReaderService : Service() {
         val events: SharedFlow<PaapEvent> = _events
         var eventLog: EventLog? = null
 
+
         fun injectLine(line: String) {
             val event = PaapEventParser.parseLine(line)
             if (event != null) {
@@ -59,7 +60,9 @@ class LogcatReaderService : Service() {
     }
 
     private suspend fun readLogcat() {
-        val cmd = arrayOf("logcat", "-s", "PRETTY_LOGGER:E", "-T", "1")
+        val ts = java.text.SimpleDateFormat("MM-dd HH:mm:ss.SSS", java.util.Locale.US)
+            .format(java.util.Date())
+        val cmd = arrayOf("logcat", "-s", "PRETTY_LOGGER:E", "anziot:I", "-T", ts)
         process = Runtime.getRuntime().exec(cmd)
         val proc = process!!
 

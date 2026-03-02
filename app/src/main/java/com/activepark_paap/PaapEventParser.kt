@@ -6,9 +6,16 @@ object PaapEventParser {
 
     private val INBOUND_PATTERN = Regex("""UdpManager\s*:\s*handleUdpReadData\s+data\s*=\s*(.+)""")
     private val OUTBOUND_PATTERN = Regex("""UdpWriterManager\s*:\s*send\s+data\s*=\s*(.+)""")
+    private val LINPHONE_STATE_PATTERN = Regex("""moving from state (\S+) to (\S+)""")
 
-    /** Parse a logcat line into a PaapEvent, or null if not a PAAP UDP line. */
+    /** Parse a logcat line into a PaapEvent, or null if not a recognized line. */
     fun parseLine(line: String): PaapEvent? {
+        LINPHONE_STATE_PATTERN.find(line)?.let { match ->
+            return PaapEvent.LinphoneCall(
+                fromState = match.groupValues[1].removePrefix("Linphone"),
+                toState = match.groupValues[2].removePrefix("Linphone")
+            )
+        }
         val (jsonStr, direction) = extractJson(line) ?: return null
         return parseJson(jsonStr.trim(), direction)
     }
