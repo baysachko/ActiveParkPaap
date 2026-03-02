@@ -13,6 +13,8 @@ import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.activepark_paap.ui.common.FontHelper
+import com.activepark_paap.ui.common.OverlayBarHelper
 import com.activepark_paap.ui.entry.EntryIdleView
 import com.activepark_paap.ui.entry.EntryTransactionView
 import com.activepark_paap.ui.exit.CompletedExitView
@@ -23,8 +25,17 @@ class OverlayService : Service() {
 
     enum class Page { IDLE, EXIT_IDLE, TRANSACTION, EXIT_TRANSACTION, COMPLETED_EXIT, DEBUG }
 
+    companion object {
+        private val ACTIVE_CALL_STATES = setOf(
+            "CallIncomingReceived", "CallConnected", "CallStreamsRunning",
+            "CallOutgoingInit", "CallOutgoingProgress", "CallOutgoingRinging"
+        )
+    }
+
     private var windowManager: WindowManager? = null
-    private var rootContainer: FrameLayout? = null
+    private var rootView: View? = null
+    private var contentContainer: FrameLayout? = null
+    private var barHelper: OverlayBarHelper? = null
     private val events = mutableListOf<PaapEvent>()
     private lateinit var adapter: EventAdapter
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -36,6 +47,7 @@ class OverlayService : Service() {
     private var completedExitView: CompletedExitView? = null
     private var debugView: View? = null
     private var currentPage = Page.IDLE
+    private var callActive = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -55,7 +67,15 @@ class OverlayService : Service() {
 
     @Suppress("DEPRECATION")
     private fun createOverlay() {
-        rootContainer = FrameLayout(this)
+        val inflater = LayoutInflater.from(this)
+        rootView = inflater.inflate(R.layout.overlay_root, null)
+        contentContainer = rootView!!.findViewById(R.id.contentContainer)
+        assert(contentContainer != null) { "contentContainer not found" }
+
+        barHelper = OverlayBarHelper(rootView!!)
+        barHelper!!.onDebugRequested = { showPage(Page.DEBUG) }
+        barHelper!!.startClock(scope)
+        FontHelper.applyFonts(this, rootView!!)
 
         @Suppress("DEPRECATION")
         val windowType = if (Build.VERSION.SDK_INT >= 26)
@@ -82,7 +102,7 @@ class OverlayService : Service() {
         showPage(Page.IDLE)
 
         try {
-            windowManager!!.addView(rootContainer, params)
+            windowManager!!.addView(rootView, params)
         } catch (e: Exception) {
             Log.e("OverlayService", "Failed to add overlay", e)
             stopSelf()
@@ -92,33 +112,23 @@ class OverlayService : Service() {
 
     private fun setupIdleView() {
         idleView = EntryIdleView(this)
-        idleView!!.startClock(scope)
-        idleView!!.onDebugRequested = { showPage(Page.DEBUG) }
     }
 
     private fun setupExitIdleView() {
         exitIdleView = EntryIdleView(this)
-        exitIdleView!!.startClock(scope)
         exitIdleView!!.setMode(isExit = true)
-        exitIdleView!!.onDebugRequested = { showPage(Page.DEBUG) }
     }
 
     private fun setupTransactionView() {
         transactionView = EntryTransactionView(this)
-        transactionView!!.startClock(scope)
-        transactionView!!.onDebugRequested = { showPage(Page.DEBUG) }
     }
 
     private fun setupExitTransactionView() {
         exitTransactionView = ExitTransactionView(this)
-        exitTransactionView!!.startClock(scope)
-        exitTransactionView!!.onDebugRequested = { showPage(Page.DEBUG) }
     }
 
     private fun setupCompletedExitView() {
         completedExitView = CompletedExitView(this)
-        completedExitView!!.startClock(scope)
-        completedExitView!!.onDebugRequested = { showPage(Page.DEBUG) }
     }
 
     private fun setupDebugView() {
@@ -215,7 +225,42 @@ class OverlayService : Service() {
     }
 
     fun showPage(page: Page) {
-        assert(rootContainer != null) { "rootContainer null" }
+        assert(contentContainer != null) { "contentContainer null" }
+
+        if (page == Page.DEBUG) {
+            // Debug takes over entire root — hide persistent chrome
+            assert(debugView != null) { "debugView null" }
+            val root = rootView as FrameLayout
+            root.removeAllViews()
+            root.addView(debugView, FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            ))
+            currentPage = page
+            return
+        }
+
+        // Restore persistent root if coming from debug
+        if (currentPage == Page.DEBUG) {
+            val root = rootView as FrameLayout
+            root.removeAllViews()
+            val inflater = LayoutInflater.from(this)
+            val fresh = inflater.inflate(R.layout.overlay_root, root, false)
+            // Copy children from fresh into root
+            val freshFrame = fresh as FrameLayout
+            while (freshFrame.childCount > 0) {
+                val child = freshFrame.getChildAt(0)
+                freshFrame.removeViewAt(0)
+                root.addView(child)
+            }
+            contentContainer = root.findViewById(R.id.contentContainer)
+            barHelper = OverlayBarHelper(root)
+            barHelper!!.onDebugRequested = { showPage(Page.DEBUG) }
+            barHelper!!.startClock(scope)
+            barHelper!!.setCallActive(callActive)
+            FontHelper.applyFonts(this, root)
+        }
+
         val targetView = when (page) {
             Page.IDLE -> {
                 assert(idleView != null) { "idleView null" }
@@ -237,13 +282,14 @@ class OverlayService : Service() {
                 assert(completedExitView != null) { "completedExitView null" }
                 completedExitView!!.view
             }
-            Page.DEBUG -> {
-                assert(debugView != null) { "debugView null" }
-                debugView!!
-            }
+            Page.DEBUG -> throw IllegalStateException("handled above")
         }
-        rootContainer!!.removeAllViews()
-        rootContainer!!.addView(
+
+        // Detach from previous parent if needed
+        (targetView.parent as? ViewGroup)?.removeView(targetView)
+
+        contentContainer!!.removeAllViews()
+        contentContainer!!.addView(
             targetView,
             FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -284,6 +330,10 @@ class OverlayService : Service() {
                 if (events.size > 200) events.subList(200, events.size).clear()
                 adapter.notifyDataSetChanged()
                 if (event is PaapEvent.DisplayUpdate) handleDisplayUpdate(event)
+                if (event is PaapEvent.LinphoneCall) {
+                    callActive = event.toState in ACTIVE_CALL_STATES
+                    barHelper?.setCallActive(callActive)
+                }
                 if (currentPage == Page.DEBUG) {
                     val recycler = debugView?.findViewById<RecyclerView>(R.id.recyclerEvents)
                     val tvEmpty = debugView?.findViewById<TextView>(R.id.tvEmpty)
@@ -334,7 +384,7 @@ class OverlayService : Service() {
                 else -> {
                     completedExitView!!.setPlate(text1)
                     completedExitView!!.setTypeBadge(text3.uppercase())
-                    completedExitView!!.setExitDate(text4.substringAfter(":").trim())
+                    completedExitView!!.setExitDate(text4)
                     Page.COMPLETED_EXIT
                 }
             }
@@ -376,9 +426,9 @@ class OverlayService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         scope.cancel()
-        if (rootContainer != null) {
-            windowManager?.removeView(rootContainer)
-            rootContainer = null
+        if (rootView != null) {
+            windowManager?.removeView(rootView)
+            rootView = null
         }
     }
 
@@ -391,5 +441,4 @@ class OverlayService : Service() {
             events.addAll(history.reversed())
         }
     }
-
 }

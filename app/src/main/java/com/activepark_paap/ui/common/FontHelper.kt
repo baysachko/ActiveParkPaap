@@ -2,6 +2,7 @@ package com.activepark_paap.ui.common
 
 import android.content.Context
 import android.graphics.Typeface
+import android.util.TypedValue
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
@@ -27,6 +28,17 @@ object FontHelper {
             for (i in 0 until v.childCount) {
                 applyFontToViewTree(v.getChildAt(i), regular, bold)
             }
+        }
+    }
+
+    fun autoFitTextSize(tv: TextView, maxSizeSp: Float, maxWidthPx: Int) {
+        assert(maxSizeSp > 10f) { "maxSizeSp must be > 10" }
+        assert(maxWidthPx > 0) { "maxWidthPx must be > 0" }
+        var size = maxSizeSp
+        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, size)
+        while (tv.paint.measureText(tv.text.toString()) > maxWidthPx && size > 10f) {
+            size -= 2f
+            tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, size)
         }
     }
 }

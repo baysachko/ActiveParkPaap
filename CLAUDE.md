@@ -36,9 +36,11 @@ Sits on top of PAAP (`com.anziot.park`) — the Chinese parking app that handles
 - `LogcatReaderService.kt` — background logcat reader via `Runtime.exec("logcat", "-s", "PRETTY_LOGGER:E", "anziot:I", "-T", "1")`. Uses AtomicBoolean to prevent duplicate processes. Drains stderr.
 - `PaapEventParser.kt` — regex extracts JSON from `UdpManager:handleUdpReadData` (inbound) / `UdpWriterManager:send` (outbound), maps to typed events
 - `PaapEvent.kt` — sealed class: GateOpen, Speak, PrintTicket, DisplayUpdate, VehicleSensing, PushButton, Heartbeat, OnlineCheck, LinphoneCall, Unknown
-- `OverlayService.kt` — draws UI via WindowManager overlay. Uses `TYPE_APPLICATION_OVERLAY` on API 26+ (emulator), `TYPE_SYSTEM_ALERT` on API 22 (box). Monitors PAAP foreground state via `su -c "dumpsys activity activities"` every 5s — shows red warning banner when PAAP not resumed. Manages page switching via `Page` enum and `showPage()`.
+- `OverlayService.kt` — draws UI via WindowManager overlay. Uses `TYPE_APPLICATION_OVERLAY` on API 26+ (emulator), `TYPE_SYSTEM_ALERT` on API 22 (box). Monitors PAAP foreground state via `su -c "dumpsys activity activities"` every 5s — shows red warning banner when PAAP not resumed. Manages page switching via `Page` enum and `showPage()`. Role toggle (entry/exit) is sole authority for page routing — entry mode only shows IDLE/TRANSACTION, exit mode only shows EXIT_IDLE/EXIT_TRANSACTION/COMPLETED_EXIT.
 - `MainActivity.kt` — launcher: starts LogcatReaderService + OverlayService, then finishes. Handles overlay permission prompt on API 23+.
-- `BootReceiver.kt` — `BOOT_COMPLETED` + custom `ACTION_RESTART` receiver. Starts both services.
+- `BootReceiver.kt` — `BOOT_COMPLETED` + custom `ACTION_RESTART` receiver. Starts all 3 services, clears guard pause flag.
+- `GuardService.kt` — watchdog in `:guard` process. Uses `GuardWatchdog` for pure restart logic.
+- `GuardWatchdog.kt` — testable restart logic. 8s debounce, `killed` flag for pause.
 - `EventLog.kt` — JSONL event persistence. 7 daily files, auto-prune. Testable class (inject `logDir`).
 
 ## UI Screens (Page enum in OverlayService)
@@ -68,10 +70,13 @@ Frames: `Hdmbk` (Entry Idle), `bMAUt` (Transaction Entry), `bJGHf` (Exit Idle), 
 
 ## Auto-start & Self-restart
 
-- **Boot receiver** (`BootReceiver.kt`) — `BOOT_COMPLETED` starts both services on device boot
-- **AlarmManager restart** — `OverlayService.onDestroy()` schedules alarm (8s) to restart via `BootReceiver`. Survives `stopSelf()` but NOT `force-stop` (which skips `onDestroy`).
-- **`START_STICKY`** on both services — OS restarts if killed by low memory
-- **`stopWithTask="false"`** on both services in manifest
+- **Boot receiver** (`BootReceiver.kt`) — `BOOT_COMPLETED` starts all 3 services, clears guard pause flag
+- **GuardService** (`GuardService.kt`) — runs in `:guard` process, checks every 8s via `GuardWatchdog`. Restarts dead services only after 8s debounce. `ACTION_PAUSE` stops restarts. Self-restarts via AlarmManager if killed.
+- **GuardWatchdog** (`GuardWatchdog.kt`) — pure logic, no Android deps. Tracks `firstDeadAt` per service, only restarts after `restartDelayMs` (8s). `killed` flag pauses all checks.
+- **OverlayService** uses `START_NOT_STICKY` — OS does NOT restart it. GuardService is sole restart owner.
+- **LogcatReaderService** uses `START_STICKY` — OS restarts if killed by low memory.
+- **`stopWithTask="false"`** on OverlayService, LogcatReaderService, GuardService
+- **Auto:ON/OFF** toggle in debug view — persisted via `SharedPreferences("guard_state", "paused")`. Auto:OFF pauses GuardService restarts.
 - Box logs: app-level `Log.i`/`Log.d` don't appear in logcat. Use `Log.e` for debugging.
 
 ## Event Log
