@@ -20,6 +20,9 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Self-grant permissions via root — no manual adb commands needed
+        selfGrantPermissions()
+
         startService(Intent(this, LogcatReaderService::class.java))
 
         if (Build.VERSION.SDK_INT >= 23 && !Settings.canDrawOverlays(this)) {
@@ -42,6 +45,18 @@ class MainActivity : AppCompatActivity() {
             } else {
                 finish() // user denied
             }
+        }
+    }
+
+    private fun selfGrantPermissions() {
+        try {
+            val pkg = packageName
+            Runtime.getRuntime().exec(arrayOf("su", "-c",
+                "pm grant $pkg android.permission.READ_LOGS")).waitFor()
+            Runtime.getRuntime().exec(arrayOf("su", "-c",
+                "appops set $pkg SYSTEM_ALERT_WINDOW allow")).waitFor()
+        } catch (e: Exception) {
+            android.util.Log.e("MainActivity", "self-grant failed", e)
         }
     }
 
