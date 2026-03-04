@@ -59,6 +59,10 @@ sealed class PaapEvent(val timestamp: Long = System.currentTimeMillis()) {
         val toState: String
     ) : PaapEvent()
 
+    data class DebugLog(
+        val message: String
+    ) : PaapEvent()
+
     data class Unknown(
         val rawJson: String,
         val direction: Direction,
@@ -75,6 +79,7 @@ sealed class PaapEvent(val timestamp: Long = System.currentTimeMillis()) {
         is Heartbeat -> "HEARTBEAT"
         is OnlineCheck -> "ONLINE CHECK"
         is LinphoneCall -> "CALL: $fromState → $toState"
+        is DebugLog -> "CONFIG: $message"
         is Unknown -> "UNKNOWN: ${rawJson.take(80)}"
     }
 
@@ -88,6 +93,7 @@ sealed class PaapEvent(val timestamp: Long = System.currentTimeMillis()) {
         is Heartbeat -> direction.name
         is OnlineCheck -> direction.name
         is LinphoneCall -> "DEVICE"
+        is DebugLog -> "DEVICE"
         is Unknown -> direction.name
     }
 }

@@ -9,7 +9,8 @@ sealed class PaymentState {
     data class AwaitingPayment(
         val tranId: String,
         val qrBitmap: Bitmap,
-        val expiresAtUnix: Long
+        val expiresAtUnix: Long,
+        val currency: String
     ) : PaymentState()
 
     data class Confirmed(val tranId: String) : PaymentState()

@@ -53,6 +53,8 @@ class ExitTransactionPaymentView(context: Context) {
         tvPayAmount.text = text
     }
 
+    fun getPayAmount(): String = tvPayAmount.text.toString()
+
     fun setStatusLabel(text: String, color: Int) {
         assert(text.isNotEmpty()) { "status label empty" }
         tvStatusLabel.text = text

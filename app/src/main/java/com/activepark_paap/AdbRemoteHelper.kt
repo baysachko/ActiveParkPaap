@@ -62,7 +62,7 @@ object AdbRemoteHelper {
     fun saveIp(ctx: Context, ip: String) {
         assert(isValidIp(ip)) { "invalid IP format: $ip" }
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putString(KEY_SERVER_IP, ip).apply()
+            .edit().putString(KEY_SERVER_IP, ip).commit()
     }
 
     fun enableAdbWithFirewall(ctx: Context): Boolean {

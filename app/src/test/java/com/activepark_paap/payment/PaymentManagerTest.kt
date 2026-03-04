@@ -51,8 +51,8 @@ class PaymentManagerTest {
         )
     }
 
-    private fun successInitiate(tranId: String = "txn1", expiresAt: Long = 2000L) {
-        initiateResult = ApiResult.Success(InitiateResponse(tranId, "base64data", "4.00", "USD", expiresAt))
+    private fun successInitiate(tranId: String = "txn1", expiresIn: Long = 1000L) {
+        initiateResult = ApiResult.Success(InitiateResponse(tranId, "base64data", "4.00", "USD", 0L, expiresIn))
     }
 
     private fun pendingPoll(tranId: String = "txn1") {
@@ -81,6 +81,49 @@ class PaymentManagerTest {
         assertTrue("Expected AwaitingPayment, got $state", state is PaymentState.AwaitingPayment)
         assertEquals("txn1", (state as PaymentState.AwaitingPayment).tranId)
         manager.destroy()
+    }
+
+    @Test
+    fun startPayment_success_computesLocalExpiry() = testScope.runTest {
+        clockSeconds = 500L
+        successInitiate(expiresIn = 900L)
+        pendingPoll()
+
+        manager.startPayment("CARD1")
+        advanceTimeBy(1)
+
+        val state = manager.state.value as PaymentState.AwaitingPayment
+        assertEquals(1400L, state.expiresAtUnix) // 500 + 900
+        manager.destroy()
+    }
+
+    @Test
+    fun startPayment_success_passesCurrency() = testScope.runTest {
+        successInitiate()
+        pendingPoll()
+
+        manager.startPayment("CARD1")
+        advanceTimeBy(1)
+
+        val state = manager.state.value as PaymentState.AwaitingPayment
+        assertEquals("USD", state.currency)
+        manager.destroy()
+    }
+
+    @Test
+    fun pollExpires_whenClockExceedsLocalExpiry() = testScope.runTest {
+        clockSeconds = 1000L
+        successInitiate(expiresIn = 100L) // localExpiresAt = 1100
+        pendingPoll()
+
+        manager.startPayment("CARD1")
+        advanceTimeBy(1)
+        assertTrue(manager.state.value is PaymentState.AwaitingPayment)
+
+        clockSeconds = 1101L // past expiry
+        advanceTimeBy(5001)
+
+        assertTrue(manager.state.value is PaymentState.Expired)
     }
 
     @Test
@@ -148,7 +191,7 @@ class PaymentManagerTest {
 
         val state = manager.state.value
         assertTrue(state is PaymentState.Error)
-        assertEquals("Network error, please try again", (state as PaymentState.Error).message)
+        assertEquals("Network error: timeout", (state as PaymentState.Error).message)
     }
 
     // --- poll ---
@@ -217,7 +260,7 @@ class PaymentManagerTest {
     // --- startPayment replaces existing ---
 
     @Test
-    fun startPayment_replacesExisting_cancelsOld() = testScope.runTest {
+    fun startPayment_replacesExisting_cancelsOldViaApi() = testScope.runTest {
         successInitiate(tranId = "txn1")
         pendingPoll()
         manager.startPayment("CARD1")
@@ -228,9 +271,25 @@ class PaymentManagerTest {
         manager.startPayment("CARD2")
         advanceTimeBy(1)
 
+        assertEquals(listOf("CARD1"), cancelledCardNos)
         val state = manager.state.value
         assertTrue(state is PaymentState.AwaitingPayment)
         assertEquals("txn2", (state as PaymentState.AwaitingPayment).tranId)
+        manager.destroy()
+    }
+
+    @Test
+    fun startPayment_sameCard_noCancelCall() = testScope.runTest {
+        successInitiate(tranId = "txn1")
+        pendingPoll()
+        manager.startPayment("CARD1")
+        advanceTimeBy(1)
+
+        successInitiate(tranId = "txn2")
+        manager.startPayment("CARD1")
+        advanceTimeBy(1)
+
+        assertTrue(cancelledCardNos.isEmpty())
         manager.destroy()
     }
 

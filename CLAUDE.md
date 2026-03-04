@@ -35,7 +35,7 @@ Sits on top of PAAP (`com.anziot.park`) — the Chinese parking app that handles
 
 - `LogcatReaderService.kt` — background logcat reader via `Runtime.exec("logcat", "-s", "PRETTY_LOGGER:E", "anziot:I", "-T", "1")`. Uses AtomicBoolean to prevent duplicate processes. Drains stderr.
 - `PaapEventParser.kt` — regex extracts JSON from `UdpManager:handleUdpReadData` (inbound) / `UdpWriterManager:send` (outbound), maps to typed events
-- `PaapEvent.kt` — sealed class: GateOpen, Speak, PrintTicket, DisplayUpdate, VehicleSensing, PushButton, Heartbeat, OnlineCheck, LinphoneCall, Unknown
+- `PaapEvent.kt` — sealed class: GateOpen, Speak, PrintTicket, DisplayUpdate, VehicleSensing, PushButton, Heartbeat, OnlineCheck, LinphoneCall, DebugLog, Unknown
 - `OverlayService.kt` — draws UI via WindowManager overlay. Uses `TYPE_APPLICATION_OVERLAY` on API 26+ (emulator), `TYPE_SYSTEM_ALERT` on API 22 (box). Monitors PAAP foreground state via `su -c "dumpsys activity activities"` every 5s — shows red warning banner when PAAP not resumed. Manages page switching via `Page` enum and `showPage()`. Role toggle (entry/exit) is sole authority for page routing — entry mode only shows IDLE/TRANSACTION, exit mode only shows EXIT_IDLE/EXIT_TRANSACTION/COMPLETED_EXIT.
 - `MainActivity.kt` — launcher: starts LogcatReaderService + OverlayService, then finishes. Handles overlay permission prompt on API 23+.
 - `BootReceiver.kt` — `BOOT_COMPLETED` + custom `ACTION_RESTART` receiver. Starts all 3 services, clears guard pause flag.
@@ -44,7 +44,7 @@ Sits on top of PAAP (`com.anziot.park`) — the Chinese parking app that handles
 - `EventLog.kt` — JSONL event persistence. 7 daily files, auto-prune. Testable class (inject `logDir`).
 - `AdbRemoteHelper.kt` — enables adb TCP :5555 + iptables firewall to saved server IP. Used by BootReceiver (on boot) and debug UI (on save).
 - `payment/PaymentConfig.kt` — SharedPreferences wrapper (`baseUrl`, `apiKey`, `pollIntervalMs`, `enabled`). `isReady()` = enabled + baseUrl + apiKey non-empty.
-- `payment/PaymentState.kt` — sealed class: Idle, Initiating, AwaitingPayment(qrBitmap, tranId, expiresAtUnix), Confirmed, Expired, Error(message), NotConfigured, FeatureUnavailable.
+- `payment/PaymentState.kt` — sealed class: Idle, Initiating, AwaitingPayment(qrBitmap, tranId, expiresAtUnix, currency), Confirmed, Expired, Error(message), NotConfigured, FeatureUnavailable.
 - `payment/PaymentApiClient.kt` — OkHttp3 wrapper. `initiate(cardNo)`, `pollStatus(tranId)`, `cancel(cardNo)`. Auth via `X-API-Key` header. 409 = existing transaction (returns cached QR). `baseUrl` = domain only (client appends `/api/v1/terminal-box/payment/...`).
 - `payment/PaymentManager.kt` — lifecycle orchestrator. Owns `StateFlow<PaymentState>`, poll loop (configurable interval), cancel on page change, auto-cancel on idle-without-complete. `onPageChanged()` for page transitions, `startPayment(cardNo)` entry point.
 
@@ -110,9 +110,11 @@ Frames: `Hdmbk` (Entry Idle), `bMAUt` (Transaction Entry), `bJGHf` (Exit Idle), 
 - **Happy path**: poll detects COMPLETED → show "Processing..." + checkmark → PAAP logcat gate-open event → COMPLETED_EXIT with payment label
 - **Gate timeout**: 20s after Confirmed, if no PAAP gate-open → warning icon + "Payment confirmed, gate not responding." + "Please contact parking staff."
 - **Cancel**: EXIT_IDLE reappears without COMPLETED_EXIT → auto-cancel via API
-- **409 handling**: existing transaction — returns cached QR + ExistingTranId + ExpiresAt from Redis
+- **Timer**: uses `ExpiresIn` (relative seconds) from API to compute local expiry — avoids server/box clock mismatch
+- **Currency**: API returns `Currency` field, shown as prefix on pay amount in exit transaction payment view
+- **409 handling**: existing transaction — returns cached QR + ExistingTranId + ExpiresAt + ExpiresIn from Redis
 - **Dependencies**: OkHttp3 `3.12.13` (last Java 7 compatible), coroutines-test, mockito-core
-- **Tests**: PaymentConfigTest (6), PaymentApiClientTest (14), PaymentManagerTest (13) — all pure logic, no Robolectric
+- **Tests**: PaymentConfigTest (6), PaymentApiClientTest (16), PaymentManagerTest (17) — all pure logic, no Robolectric
 
 ## Critical Warnings
 

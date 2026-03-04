@@ -49,6 +49,7 @@ class OverlayService : Service() {
     private var completedExitView: CompletedExitView? = null
     private var debugView: View? = null
     private var currentPage = Page.IDLE
+    private var pendingPage: Page? = null
     private var callActive = false
     private var paymentManager: PaymentManager? = null
     private var currentCardNo: String? = null
@@ -164,7 +165,15 @@ class OverlayService : Service() {
         }
 
         debugView!!.findViewById<Button>(R.id.btnBack).setOnClickListener {
-            showPage(if (currentPage == Page.DEBUG) Page.IDLE else currentPage)
+            if (currentPage == Page.DEBUG) {
+                val target = pendingPage ?: run {
+                    val role = getSharedPreferences("box_state", MODE_PRIVATE)
+                        .getString("role", "entry") ?: "entry"
+                    PageRouter.initialPageForRole(role)
+                }
+                pendingPage = null
+                showPage(target)
+            }
         }
 
         val btnAuto = debugView!!.findViewById<Button>(R.id.btnAutoRestart)
@@ -176,7 +185,7 @@ class OverlayService : Service() {
         )
         btnAuto.setOnClickListener {
             val nowPaused = !guardPrefs.getBoolean("paused", false)
-            guardPrefs.edit().putBoolean("paused", nowPaused).apply()
+            guardPrefs.edit().putBoolean("paused", nowPaused).commit()
             if (nowPaused) {
                 startService(Intent(this, GuardService::class.java).apply {
                     action = GuardService.ACTION_PAUSE
@@ -204,7 +213,8 @@ class OverlayService : Service() {
         btnRole.setOnClickListener {
             val current = rolePrefs.getString("role", "entry") ?: "entry"
             val next = if (current == "entry") "exit" else "entry"
-            rolePrefs.edit().putString("role", next).apply()
+            rolePrefs.edit().putString("role", next).commit()
+            addDebugLog("Role saved: $next")
             updateRoleBtn()
             showPage(PageRouter.initialPageForRole(next))
         }
@@ -227,12 +237,14 @@ class OverlayService : Service() {
             val ip = etServerIp.text.toString().trim()
             if (ip.matches(Regex("^[0-9]{1,3}(\\.[0-9]{1,3}){3}$"))) {
                 AdbRemoteHelper.saveIp(this, ip)
+                addDebugLog("ADB IP saved: $ip")
                 scope.launch(Dispatchers.IO) {
                     AdbRemoteHelper.enableAdbWithFirewall(ip)
                     withContext(Dispatchers.Main) { updateAdbStatus() }
                 }
             } else {
                 etServerIp.setError("Invalid IP")
+                addDebugLog("ADB IP save failed: invalid IP \"$ip\"")
             }
         }
 
@@ -276,6 +288,7 @@ class OverlayService : Service() {
                 enabled = PaymentConfig.load(this).enabled
             )
             PaymentConfig.save(this, cfg)
+            addDebugLog("Payment saved: url=${cfg.baseUrl}, poll=${cfg.pollIntervalMs}ms, enabled=${cfg.enabled}")
             updatePaymentStatus()
             setupPaymentManager()
         }
@@ -397,6 +410,7 @@ class OverlayService : Service() {
         if (page == Page.DEBUG) {
             // Debug takes over entire root — hide persistent chrome
             assert(debugView != null) { "debugView null" }
+            pendingPage = currentPage
             val root = rootView as FrameLayout
             root.removeAllViews()
             root.addView(debugView, FrameLayout.LayoutParams(
@@ -502,6 +516,12 @@ class OverlayService : Service() {
         }
     }
 
+    private fun addDebugLog(message: String) {
+        events.add(0, PaapEvent.DebugLog(message))
+        if (events.size > 200) events.subList(200, events.size).clear()
+        adapter.notifyDataSetChanged()
+    }
+
     private fun collectEvents() {
         scope.launch {
             LogcatReaderService.events.collect { event ->
@@ -529,7 +549,7 @@ class OverlayService : Service() {
         assert(transactionView != null) { "transactionView null in handleDisplayUpdate" }
         assert(exitTransactionView != null) { "exitTransactionView null in handleDisplayUpdate" }
         assert(completedExitView != null) { "completedExitView null in handleDisplayUpdate" }
-        if (currentPage == Page.DEBUG) return
+        val inDebug = currentPage == Page.DEBUG
 
         val text1 = event.texts["text1"]?.text ?: return
         val text3 = event.texts["text3"]?.text ?: ""
@@ -571,8 +591,9 @@ class OverlayService : Service() {
                 completedExitView!!.setPlate(text1)
                 completedExitView!!.setTypeBadge(text3.uppercase())
                 completedExitView!!.setExitDate(text4)
-                val paymentWasUsed = paymentManager != null &&
-                    paymentManager!!.state.value is PaymentState.Confirmed
+                val pmState = paymentManager?.state?.value
+                val paymentWasUsed = pmState is PaymentState.Confirmed ||
+                    pmState is PaymentState.AwaitingPayment
                 if (paymentWasUsed) {
                     completedExitView!!.setPaymentConfirmed("Payment Confirmed, Paid via QR")
                 } else {
@@ -585,12 +606,17 @@ class OverlayService : Service() {
             else -> { /* IDLE, EXIT_IDLE — no view updates needed */ }
         }
 
-        showPage(page)
+        if (inDebug) {
+            pendingPage = page
+        } else {
+            showPage(page)
+        }
     }
 
     private fun restoreRole() {
         val role = getSharedPreferences("box_state", MODE_PRIVATE)
             .getString("role", "entry") ?: "entry"
+        addDebugLog("Role restored: $role")
         showPage(PageRouter.initialPageForRole(role))
     }
 
@@ -599,11 +625,15 @@ class OverlayService : Service() {
         paymentManager = null
         val config = PaymentConfig.load(this)
         if (!config.isReady()) return
+        addDebugLog("Payment init: url=${config.baseUrl}, poll=${config.pollIntervalMs}ms")
         val apiClient = PaymentApiClient(config.baseUrl, config.apiKey)
         val mgr = PaymentManager(apiClient, config.pollIntervalMs, scope)
         paymentManager = mgr
         scope.launch {
-            mgr.state.collect { state -> updatePaymentUI(state) }
+            mgr.state.collect { state ->
+                if (state !is PaymentState.Idle) addDebugLog("Payment: $state")
+                updatePaymentUI(state)
+            }
         }
     }
 
@@ -618,6 +648,12 @@ class OverlayService : Service() {
                 view.setPaymentTimer("")
             }
             is PaymentState.AwaitingPayment -> {
+                if (state.currency.isNotEmpty()) {
+                    val current = view.getPayAmount()
+                    if (!current.startsWith(state.currency)) {
+                        view.setPayAmount("${state.currency} $current")
+                    }
+                }
                 view.setQrBitmap(state.qrBitmap)
                 view.setPaymentStatus("Awaiting Payment...", Color.parseColor("#E8A000"))
                 countdownJob = scope.launch {

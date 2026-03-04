@@ -41,6 +41,7 @@ class PaymentApiClientTest {
             .put("Amount", "4.00")
             .put("Currency", "USD")
             .put("ExpiresAt", 1700000000L)
+            .put("ExpiresIn", 900L)
         server.enqueue(MockResponse().setResponseCode(200).setBody(body.toString()))
 
         val result = client.initiate("CARD001")
@@ -51,12 +52,13 @@ class PaymentApiClientTest {
         assertEquals("data:image/png;base64,abc", data.qrImageBase64)
         assertEquals("4.00", data.amount)
         assertEquals(1700000000L, data.expiresAtUnix)
+        assertEquals(900L, data.expiresInSeconds)
     }
 
     @Test
     fun initiate_sendsCorrectRequest() = runBlocking {
         server.enqueue(MockResponse().setResponseCode(200).setBody(
-            JSONObject().put("TranId", "t1").put("QrImage", "").put("Amount", "").put("Currency", "").put("ExpiresAt", 0).toString()
+            JSONObject().put("TranId", "t1").put("QrImage", "").put("Amount", "").put("Currency", "").put("ExpiresAt", 0).put("ExpiresIn", 0).toString()
         ))
         client.initiate("ABC123")
 
@@ -84,6 +86,26 @@ class PaymentApiClientTest {
         val data = (result as ApiResult.Success).data
         assertEquals("old123", data.tranId)
         assertEquals("data:image/png;base64,cached", data.qrImageBase64)
+        assertEquals(0L, data.expiresInSeconds)
+    }
+
+    @Test
+    fun initiate_409_withExpiresIn_parsesIt() = runBlocking {
+        val body = JSONObject()
+            .put("ExistingTranId", "old456")
+            .put("QrImage", "data:image/png;base64,qr")
+            .put("Amount", "5.00")
+            .put("Currency", "KHR")
+            .put("ExpiresAt", 1700000000L)
+            .put("ExpiresIn", 600L)
+        server.enqueue(MockResponse().setResponseCode(409).setBody(body.toString()))
+
+        val result = client.initiate("CARD002")
+
+        assertTrue(result is ApiResult.Success)
+        val data = (result as ApiResult.Success).data
+        assertEquals(600L, data.expiresInSeconds)
+        assertEquals("KHR", data.currency)
     }
 
     @Test

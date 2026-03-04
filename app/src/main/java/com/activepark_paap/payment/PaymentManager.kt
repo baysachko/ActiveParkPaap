@@ -33,8 +33,14 @@ class PaymentManager(
     fun startPayment(cardNo: String) {
         assert(cardNo.isNotEmpty()) { "cardNo must not be empty" }
         paymentJob?.cancel()
+        val oldCard = currentCardNo
         currentCardNo = cardNo
-        paymentJob = scope.launch { executePaymentFlow(cardNo) }
+        paymentJob = scope.launch {
+            if (oldCard != null && oldCard != cardNo) {
+                apiClient.cancel(oldCard)
+            }
+            executePaymentFlow(cardNo)
+        }
     }
 
     fun cancelPayment(cardNo: String) {
@@ -78,7 +84,9 @@ class PaymentManager(
         when (result) {
             is ApiResult.Success -> handleInitiateSuccess(result.data)
             is ApiResult.HttpError -> _state.value = mapHttpError(result)
-            is ApiResult.NetworkError -> _state.value = PaymentState.Error("Network error, please try again")
+            is ApiResult.NetworkError -> {
+                _state.value = PaymentState.Error("Network error: ${result.exception.message ?: "unknown"}")
+            }
         }
     }
 
@@ -88,8 +96,9 @@ class PaymentManager(
             _state.value = PaymentState.Error("Failed to decode QR code")
             return
         }
-        _state.value = PaymentState.AwaitingPayment(data.tranId, bitmap, data.expiresAtUnix)
-        pollUntilResolved(data.tranId, data.expiresAtUnix)
+        val localExpiresAt = clock() + data.expiresInSeconds
+        _state.value = PaymentState.AwaitingPayment(data.tranId, bitmap, localExpiresAt, data.currency)
+        pollUntilResolved(data.tranId, localExpiresAt)
     }
 
     private suspend fun pollUntilResolved(tranId: String, expiresAtUnix: Long) {

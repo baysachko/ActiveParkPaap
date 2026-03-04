@@ -110,6 +110,7 @@ class EventAdapter(private val events: List<PaapEvent>) :
         is PaapEvent.Heartbeat -> Color.parseColor("#607D8B")
         is PaapEvent.OnlineCheck -> Color.parseColor("#607D8B")
         is PaapEvent.LinphoneCall -> Color.parseColor("#4CAF50")
+        is PaapEvent.DebugLog -> Color.parseColor("#03A9F4")
         is PaapEvent.Unknown -> Color.parseColor("#9E9E9E")
     }
 }

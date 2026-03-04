@@ -36,7 +36,7 @@ data class PaymentConfig(
                 .putString(KEY_API_KEY, config.apiKey)
                 .putLong(KEY_POLL_INTERVAL, config.pollIntervalMs)
                 .putBoolean(KEY_ENABLED, config.enabled)
-                .apply()
+                .commit()
         }
     }
 }

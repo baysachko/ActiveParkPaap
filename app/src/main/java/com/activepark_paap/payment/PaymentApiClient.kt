@@ -20,7 +20,8 @@ data class InitiateResponse(
     val qrImageBase64: String,
     val amount: String,
     val currency: String,
-    val expiresAtUnix: Long
+    val expiresAtUnix: Long,
+    val expiresInSeconds: Long
 )
 
 data class StatusResponse(
@@ -101,6 +102,7 @@ open class PaymentApiClient(
             .put("Amount", json.optString("Amount", ""))
             .put("Currency", json.optString("Currency", ""))
             .put("ExpiresAt", json.optLong("ExpiresAt", 0))
+            .put("ExpiresIn", json.optLong("ExpiresIn", 0))
         return ApiResult.Success(parse(mapped))
     }
 
@@ -128,7 +130,8 @@ open class PaymentApiClient(
                 qrImageBase64 = json.optString("QrImage", ""),
                 amount = json.optString("Amount", ""),
                 currency = json.optString("Currency", ""),
-                expiresAtUnix = json.optLong("ExpiresAt", 0)
+                expiresAtUnix = json.optLong("ExpiresAt", 0),
+                expiresInSeconds = json.optLong("ExpiresIn", 0)
             )
         }
 
