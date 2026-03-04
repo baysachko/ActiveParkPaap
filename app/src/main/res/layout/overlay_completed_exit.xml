@@ -92,6 +92,7 @@
 
     <!-- Thank You -->
     <TextView
+        android:id="@+id/tvThankYou"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="24dp"
@@ -100,4 +101,15 @@
         android:text="THANK YOU"
         android:textColor="#22C55E"
         android:textSize="36sp" />
+
+    <TextView
+        android:id="@+id/tvPaymentConfirmed"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:tag="bold"
+        android:letterSpacing="0.06"
+        android:visibility="gone"
+        android:textColor="#22C55E"
+        android:textSize="20sp" />
 </LinearLayout>

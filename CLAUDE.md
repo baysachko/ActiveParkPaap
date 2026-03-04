@@ -43,6 +43,10 @@ Sits on top of PAAP (`com.anziot.park`) — the Chinese parking app that handles
 - `GuardWatchdog.kt` — testable restart logic. 8s debounce, `killed` flag for pause.
 - `EventLog.kt` — JSONL event persistence. 7 daily files, auto-prune. Testable class (inject `logDir`).
 - `AdbRemoteHelper.kt` — enables adb TCP :5555 + iptables firewall to saved server IP. Used by BootReceiver (on boot) and debug UI (on save).
+- `payment/PaymentConfig.kt` — SharedPreferences wrapper (`baseUrl`, `apiKey`, `pollIntervalMs`, `enabled`). `isReady()` = enabled + baseUrl + apiKey non-empty.
+- `payment/PaymentState.kt` — sealed class: Idle, Initiating, AwaitingPayment(qrBitmap, tranId, expiresAtUnix), Confirmed, Expired, Error(message), NotConfigured, FeatureUnavailable.
+- `payment/PaymentApiClient.kt` — OkHttp3 wrapper. `initiate(cardNo)`, `pollStatus(tranId)`, `cancel(cardNo)`. Auth via `X-API-Key` header. 409 = existing transaction (returns cached QR). `baseUrl` = domain only (client appends `/api/v1/terminal-box/payment/...`).
+- `payment/PaymentManager.kt` — lifecycle orchestrator. Owns `StateFlow<PaymentState>`, poll loop (configurable interval), cancel on page change, auto-cancel on idle-without-complete. `onPageChanged()` for page transitions, `startPayment(cardNo)` entry point.
 
 ## UI Screens (Page enum in OverlayService)
 
@@ -51,9 +55,10 @@ All screens share: top bar (logo + clock), accent line, bottom bar (version + ne
 - **IDLE** — `EntryIdleView` / `overlay_entry_idle.xml` — "WELCOME" + ActivePark branding. `setMode(isExit=true)` switches to "GOODBYE".
 - **EXIT_IDLE** — reuses `EntryIdleView` with `setMode(isExit=true)` — "GOODBYE" screen.
 - **TRANSACTION** — `EntryTransactionView` / `overlay_entry_transaction.xml` — plate number, type badge, entry date. Status label configurable (WELCOME/navy).
-- **EXIT_TRANSACTION** — `ExitTransactionView` / `overlay_exit_transaction.xml` — plate, parking time, pay amount. Status: EXITING/yellow `#E8A000`.
-- **COMPLETED_EXIT** — `CompletedExitView` / `overlay_completed_exit.xml` — green EXITED, plate, badge, exit date, "THANK YOU".
-- **DEBUG** — `activity_main.xml` — event log + page selector buttons (Idle, Transaction, Exit Idle, Exit Txn, Complete).
+- **EXIT_TRANSACTION** — `ExitTransactionView` / `overlay_exit_transaction.xml` — plate, parking time, pay amount. Status: EXITING/yellow `#E8A000`. When payment enabled, uses `ExitTransactionPaymentView` / `overlay_exit_transaction_payment.xml` instead (left=ticket info, right=QR/icons+status).
+- **EXIT_TRANSACTION payment states**: AwaitingPayment (QR + countdown), Confirmed (checkmark_area.png + green "PAID" + "Processing..."), Expired (expired_area.png + red "EXPIRED"), Error (error_area.png + red "ERROR"), Gate timeout 20s (warning_area.png + yellow "Payment confirmed, gate not responding." + red "Please contact parking staff.").
+- **COMPLETED_EXIT** — `CompletedExitView` / `overlay_completed_exit.xml` — green EXITED, plate, badge, exit date, "THANK YOU". With payment: adds subtitle "Payment Confirmed, Paid via QR" via `tvPaymentConfirmed`.
+- **DEBUG** — `activity_main.xml` — event log + Page row (Idle, Transaction, Exit Idle, Exit Txn, Complete) + Pay row (Expired, Error, Gate Fail, Paid, Paid Exit) + ADB config + Payment config (API URL, API Key, Poll interval, ON/OFF toggle).
 
 Debug access: 6-tap "Connected" text in bottom bar on any screen.
 
@@ -67,7 +72,7 @@ Debug access: 6-tap "Connected" text in bottom bar on any screen.
 ## Design Reference
 
 Pencil file: `/Users/vodka/Documents/Pencil/untitled.pen`
-Frames: `Hdmbk` (Entry Idle), `bMAUt` (Transaction Entry), `bJGHf` (Exit Idle), `FMa34` (Active Transaction Exit), `iMUyu` (Completed Transaction Exit)
+Frames: `Hdmbk` (Entry Idle), `bMAUt` (Transaction Entry), `bJGHf` (Exit Idle), `FMa34` (Active Transaction Exit), `iMUyu` (Completed Transaction Exit), `ItbOE` (Payment Expired), `ftrLC` (Payment Error), `UrCQx` (Payment Confirmed - Gate Not Responding)
 
 ## Auto-start & Self-restart
 
@@ -97,6 +102,18 @@ Frames: `Hdmbk` (Entry Idle), `bMAUt` (Transaction Entry), `bJGHf` (Exit Idle), 
 - **Remote workflow**: AnyDesk → customer server (same LAN) → `adb connect box-ip:5555` → `scrcpy` for full UI control.
 - **Security**: iptables drops all connections to port 5555 except the saved server IP.
 
+## QR Payment Integration
+
+- **Flow**: EXIT_TRANSACTION → PaymentManager.startPayment(cardNo) → API initiate → QR displayed → poll status → Confirmed → PAAP gate-open → COMPLETED_EXIT
+- **API**: `POST initiate`, `GET status/{tranId}`, `POST cancel`. Auth: `X-API-Key`. Base URL = domain only.
+- **Config**: SharedPreferences `payment_config` — baseUrl, apiKey, pollIntervalMs (default 10s), enabled (default OFF). Debug UI has fields + ON/OFF toggle.
+- **Happy path**: poll detects COMPLETED → show "Processing..." + checkmark → PAAP logcat gate-open event → COMPLETED_EXIT with payment label
+- **Gate timeout**: 20s after Confirmed, if no PAAP gate-open → warning icon + "Payment confirmed, gate not responding." + "Please contact parking staff."
+- **Cancel**: EXIT_IDLE reappears without COMPLETED_EXIT → auto-cancel via API
+- **409 handling**: existing transaction — returns cached QR + ExistingTranId + ExpiresAt from Redis
+- **Dependencies**: OkHttp3 `3.12.13` (last Java 7 compatible), coroutines-test, mockito-core
+- **Tests**: PaymentConfigTest (6), PaymentApiClientTest (14), PaymentManagerTest (13) — all pure logic, no Robolectric
+
 ## Critical Warnings
 
 - **NO shell grep** — `logcat | grep` caused box slowdown/reboot. Use logcat's built-in `-s` tag filtering only.
@@ -106,6 +123,16 @@ Frames: `Hdmbk` (Entry Idle), `bMAUt` (Transaction Entry), `bJGHf` (Exit Idle), 
 - **Linphone/SIP**: PAAP embeds linphone 4.5.0 for cashier↔box calls. Logs under `anziot:I` tag. Call state transitions: `CallIdle → CallIncomingReceived → CallConnected → CallStreamsRunning → CallEnd → CallReleased`. Outgoing: `CallIdle → CallOutgoingInit → CallOutgoingProgress → CallOutgoingRinging → CallEnd`.
 - Emulator vs box: emulator needs `TYPE_APPLICATION_OVERLAY` + Settings permission grant. Box needs `TYPE_SYSTEM_ALERT` + `appops set`.
 - **PAAP detection**: `getRunningTasks`/`getRunningAppProcesses` don't work (overlay steals focus, API restrictions). Only `su -c "dumpsys activity activities | grep mResumedActivity"` reliably detects PAAP foreground state on the rooted box.
+
+## Critical Rules — DO NOT VIOLATE
+
+- **Ask before ambiguity** — ask me questions before making decisions and code implementation
+- **NEVER create mock/simplified components** — always fix actual problems in existing codebase
+- **NO FALLBACK DATA** — never add mock or fallback data
+- **Always ask before making decisions** — explain concerns, don't decide independently
+- **Verify changes don't break existing functionality**
+- **Unit Tests Safety** — use in-memory databases or mocks only (no production DB operations)
+- **NASA Power of 10**: 1. Simple Control Flow 2. Bounded Iterations 3. Static Memory 4. <60 lines/fn 5. Assert Everything 6. Minimal Scope 7. Check All Returns 8. No Meta-Programming 9. Simple Data Structures 10. Zero Warnings
 
 ## Knowledge Reference
 

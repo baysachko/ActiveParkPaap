@@ -15,6 +15,8 @@ class CompletedExitView(context: Context) {
     private val tvPlate: TextView = view.findViewById(R.id.tvPlate)
     private val tvTypeBadge: TextView = view.findViewById(R.id.tvTypeBadge)
     private val tvExitDate: TextView = view.findViewById(R.id.tvExitDate)
+    private val tvThankYou: TextView = view.findViewById(R.id.tvThankYou)
+    private val tvPaymentConfirmed: TextView = view.findViewById(R.id.tvPaymentConfirmed)
 
     init {
         FontHelper.applyFonts(context, view)
@@ -38,5 +40,16 @@ class CompletedExitView(context: Context) {
     fun setExitDate(text: String) {
         assert(text.isNotEmpty()) { "exit date empty" }
         tvExitDate.text = text
+    }
+
+    fun setPaymentConfirmed(subtitle: String) {
+        assert(subtitle.isNotEmpty()) { "payment subtitle empty" }
+        tvPaymentConfirmed.text = subtitle
+        tvPaymentConfirmed.visibility = View.VISIBLE
+    }
+
+    fun resetThankYou() {
+        tvThankYou.text = "THANK YOU"
+        tvPaymentConfirmed.visibility = View.GONE
     }
 }

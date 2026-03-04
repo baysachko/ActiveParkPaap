@@ -20,6 +20,11 @@ import com.activepark_paap.ui.entry.EntryIdleView
 import com.activepark_paap.ui.entry.EntryTransactionView
 import com.activepark_paap.ui.exit.CompletedExitView
 import com.activepark_paap.ui.exit.ExitTransactionView
+import com.activepark_paap.ui.exit.ExitTransactionPaymentView
+import com.activepark_paap.payment.PaymentApiClient
+import com.activepark_paap.payment.PaymentConfig
+import com.activepark_paap.payment.PaymentManager
+import com.activepark_paap.payment.PaymentState
 import kotlinx.coroutines.*
 
 private typealias Page = PageRouter.Page
@@ -40,10 +45,15 @@ class OverlayService : Service() {
     private var exitIdleView: EntryIdleView? = null
     private var transactionView: EntryTransactionView? = null
     private var exitTransactionView: ExitTransactionView? = null
+    private var exitTransactionPaymentView: ExitTransactionPaymentView? = null
     private var completedExitView: CompletedExitView? = null
     private var debugView: View? = null
     private var currentPage = Page.IDLE
     private var callActive = false
+    private var paymentManager: PaymentManager? = null
+    private var currentCardNo: String? = null
+    private var countdownJob: Job? = null
+    private var gateTimeoutJob: Job? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -56,6 +66,7 @@ class OverlayService : Service() {
         loadEventHistory()
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         createOverlay()
+        setupPaymentManager()
         collectEvents()
         restoreRole()
         monitorPaap()
@@ -93,6 +104,7 @@ class OverlayService : Service() {
         setupExitIdleView()
         setupTransactionView()
         setupExitTransactionView()
+        setupExitTransactionPaymentView()
         setupCompletedExitView()
         setupDebugView()
         showPage(Page.IDLE)
@@ -121,6 +133,10 @@ class OverlayService : Service() {
 
     private fun setupExitTransactionView() {
         exitTransactionView = ExitTransactionView(this)
+    }
+
+    private fun setupExitTransactionPaymentView() {
+        exitTransactionPaymentView = ExitTransactionPaymentView(this)
     }
 
     private fun setupCompletedExitView() {
@@ -220,6 +236,50 @@ class OverlayService : Service() {
             }
         }
 
+        // Payment config
+        val etApiUrl = debugView!!.findViewById<EditText>(R.id.etApiUrl)
+        val etApiKey = debugView!!.findViewById<EditText>(R.id.etApiKey)
+        val etPollInterval = debugView!!.findViewById<EditText>(R.id.etPollInterval)
+        val btnPaymentToggle = debugView!!.findViewById<Button>(R.id.btnPaymentToggle)
+        val btnSavePayment = debugView!!.findViewById<Button>(R.id.btnSavePayment)
+        val tvPaymentConfigStatus = debugView!!.findViewById<TextView>(R.id.tvPaymentConfigStatus)
+
+        fun updatePaymentStatus() {
+            val cfg = PaymentConfig.load(this)
+            tvPaymentConfigStatus.text = if (cfg.enabled) "PAY:ON" else "PAY:OFF"
+            tvPaymentConfigStatus.setTextColor(Color.parseColor(if (cfg.enabled) "#22C55E" else "#FF5555"))
+            btnPaymentToggle.text = if (cfg.enabled) "ON" else "OFF"
+            btnPaymentToggle.backgroundTintList = android.content.res.ColorStateList.valueOf(
+                Color.parseColor(if (cfg.enabled) "#388E3C" else "#666666")
+            )
+        }
+
+        val paymentCfg = PaymentConfig.load(this)
+        etApiUrl.setText(paymentCfg.baseUrl)
+        etApiKey.setText(paymentCfg.apiKey)
+        etPollInterval.setText(paymentCfg.pollIntervalMs.toString())
+        updatePaymentStatus()
+
+        btnPaymentToggle.setOnClickListener {
+            val cfg = PaymentConfig.load(this)
+            PaymentConfig.save(this, cfg.copy(enabled = !cfg.enabled))
+            updatePaymentStatus()
+        }
+
+        btnSavePayment.setOnClickListener {
+            val poll = etPollInterval.text.toString().toLongOrNull() ?: 10_000L
+            assert(poll > 0) { "poll interval must be positive" }
+            val cfg = PaymentConfig(
+                baseUrl = etApiUrl.text.toString().trim(),
+                apiKey = etApiKey.text.toString().trim(),
+                pollIntervalMs = if (poll > 0) poll else 10_000L,
+                enabled = PaymentConfig.load(this).enabled
+            )
+            PaymentConfig.save(this, cfg)
+            updatePaymentStatus()
+            setupPaymentManager()
+        }
+
         debugView!!.findViewById<Button>(R.id.btnClose).setOnClickListener {
             stopSelf()
         }
@@ -237,11 +297,95 @@ class OverlayService : Service() {
         }
 
         debugView!!.findViewById<Button>(R.id.btnPageExitTxn).setOnClickListener {
+            if (PaymentConfig.load(this).enabled) {
+                exitTransactionPaymentView!!.clearPayment()
+                exitTransactionPaymentView!!.setPlate("CB12345")
+                exitTransactionPaymentView!!.setParkingTime("02:35:12")
+                exitTransactionPaymentView!!.setPayAmount("$4.00")
+                exitTransactionPaymentView!!.setStatusLabel("EXITING", Color.parseColor("#E8A000"))
+                val demoBitmap = android.graphics.BitmapFactory.decodeResource(resources, R.drawable.demo_payway)
+                if (demoBitmap != null) exitTransactionPaymentView!!.setQrBitmap(demoBitmap)
+                exitTransactionPaymentView!!.setPaymentStatus("Awaiting Payment...", Color.parseColor("#E8A000"))
+                exitTransactionPaymentView!!.setPaymentTimer("Expires in 04:32")
+            } else {
+                exitTransactionView!!.setPlate("CB12345")
+                exitTransactionView!!.setParkingTime("02:35:12")
+                exitTransactionView!!.setPayAmount("$4.00")
+                exitTransactionView!!.setStatusLabel("EXITING", Color.parseColor("#E8A000"))
+            }
+            showPage(Page.EXIT_TRANSACTION)
+        }
+
+        debugView!!.findViewById<Button>(R.id.btnPagePaid).setOnClickListener {
+            val green = Color.parseColor("#22C55E")
+            exitTransactionPaymentView!!.setPlate("CB12345")
+            exitTransactionPaymentView!!.setParkingTime("02:35:12")
+            exitTransactionPaymentView!!.setPayAmount("$4.00")
+            exitTransactionPaymentView!!.clearPayment()
+            exitTransactionPaymentView!!.showCheckmark()
+            exitTransactionPaymentView!!.setStatusLabel("EXITING", green)
+            exitTransactionPaymentView!!.setPayLabel("PAID")
+            exitTransactionPaymentView!!.setPayAmountColor(green)
+            exitTransactionPaymentView!!.setPaymentStatus("Processing...", green)
+            exitTransactionPaymentView!!.setPaymentTimer("")
             showPage(Page.EXIT_TRANSACTION)
         }
 
         debugView!!.findViewById<Button>(R.id.btnPageComplete).setOnClickListener {
+            completedExitView!!.resetThankYou()
             showPage(Page.COMPLETED_EXIT)
+        }
+
+        debugView!!.findViewById<Button>(R.id.btnPagePaidComplete).setOnClickListener {
+            completedExitView!!.setPlate("CB12345")
+            completedExitView!!.setTypeBadge("TEMPORARY")
+            completedExitView!!.setExitDate("03/04/26 14:32:05")
+            completedExitView!!.setPaymentConfirmed("Payment Confirmed, Paid via QR")
+            showPage(Page.COMPLETED_EXIT)
+        }
+
+        debugView!!.findViewById<Button>(R.id.btnPageExpired).setOnClickListener {
+            val red = Color.parseColor("#FF5555")
+            exitTransactionPaymentView!!.clearPayment()
+            exitTransactionPaymentView!!.setPlate("CB12345")
+            exitTransactionPaymentView!!.setParkingTime("02:35:12")
+            exitTransactionPaymentView!!.setPayAmount("$4.00")
+            exitTransactionPaymentView!!.setStatusLabel("EXPIRED", red)
+            exitTransactionPaymentView!!.showExpiredIcon()
+            exitTransactionPaymentView!!.setPaymentStatus("Payment Expired", red)
+            exitTransactionPaymentView!!.setPaymentTimer("Please scan ticket again")
+            showPage(Page.EXIT_TRANSACTION)
+        }
+
+        debugView!!.findViewById<Button>(R.id.btnPageError).setOnClickListener {
+            val red = Color.parseColor("#FF5555")
+            exitTransactionPaymentView!!.clearPayment()
+            exitTransactionPaymentView!!.setPlate("CB12345678901234")
+            exitTransactionPaymentView!!.setParkingTime("02:35:12")
+            exitTransactionPaymentView!!.setPayAmount("$4.00")
+            exitTransactionPaymentView!!.setStatusLabel("ERROR", red)
+            exitTransactionPaymentView!!.showErrorIcon()
+            exitTransactionPaymentView!!.setPaymentStatus("Network error, please try again", red)
+            exitTransactionPaymentView!!.setPaymentTimer("Please scan ticket again")
+            exitTransactionPaymentView!!.setPaymentTimerColor(Color.parseColor("#888888"))
+            showPage(Page.EXIT_TRANSACTION)
+        }
+
+        debugView!!.findViewById<Button>(R.id.btnPageGateFail).setOnClickListener {
+            val green = Color.parseColor("#22C55E")
+            val yellow = Color.parseColor("#E8A000")
+            exitTransactionPaymentView!!.clearPayment()
+            exitTransactionPaymentView!!.showWarningIcon()
+            exitTransactionPaymentView!!.setPlate("CB12345")
+            exitTransactionPaymentView!!.setParkingTime("02:35:12")
+            exitTransactionPaymentView!!.setPayAmount("$4.00")
+            exitTransactionPaymentView!!.setStatusLabel("EXITING", green)
+            exitTransactionPaymentView!!.setPayLabel("PAID")
+            exitTransactionPaymentView!!.setPayAmountColor(green)
+            exitTransactionPaymentView!!.setPaymentStatus("Payment confirmed, gate not responding.", yellow)
+            exitTransactionPaymentView!!.setPaymentTimer("")
+            exitTransactionPaymentView!!.setHelpText("Please contact parking staff.", Color.parseColor("#FF5555"))
+            showPage(Page.EXIT_TRANSACTION)
         }
 
         updateDebugVisibility(tvEmpty, recycler)
@@ -298,8 +442,13 @@ class OverlayService : Service() {
                 transactionView!!.view
             }
             Page.EXIT_TRANSACTION -> {
-                assert(exitTransactionView != null) { "exitTransactionView null" }
-                exitTransactionView!!.view
+                if (PaymentConfig.load(this).enabled) {
+                    assert(exitTransactionPaymentView != null) { "exitTransactionPaymentView null" }
+                    exitTransactionPaymentView!!.view
+                } else {
+                    assert(exitTransactionView != null) { "exitTransactionView null" }
+                    exitTransactionView!!.view
+                }
             }
             Page.COMPLETED_EXIT -> {
                 assert(completedExitView != null) { "completedExitView null" }
@@ -319,7 +468,14 @@ class OverlayService : Service() {
                 FrameLayout.LayoutParams.MATCH_PARENT
             )
         )
+
+        // Hide site QR card on payment exit transaction (has its own QR)
+        val hideQr = page == Page.EXIT_TRANSACTION && PaymentConfig.load(this).enabled
+        rootView?.findViewById<View>(R.id.qrCard)?.visibility =
+            if (hideQr) View.GONE else View.VISIBLE
+
         currentPage = page
+        paymentManager?.onPageChanged(page)
     }
 
     @Suppress("DEPRECATION")
@@ -394,15 +550,37 @@ class OverlayService : Service() {
                 transactionView!!.setStatusLabel("WELCOME", Color.parseColor("#010062"))
             }
             Page.EXIT_TRANSACTION -> {
-                exitTransactionView!!.setPlate(text1)
-                exitTransactionView!!.setParkingTime(text3.substringAfter(":").trim())
-                exitTransactionView!!.setPayAmount(text4.substringAfter(":").trim())
-                exitTransactionView!!.setStatusLabel("EXITING", Color.parseColor("#E8A000"))
+                val plate = text1
+                val time = text3.substringAfter(":").trim()
+                val amount = text4.substringAfter(":").trim()
+                val statusColor = Color.parseColor("#E8A000")
+                exitTransactionView!!.setPlate(plate)
+                exitTransactionView!!.setParkingTime(time)
+                exitTransactionView!!.setPayAmount(amount)
+                exitTransactionView!!.setStatusLabel("EXITING", statusColor)
+                exitTransactionPaymentView!!.setPlate(plate)
+                exitTransactionPaymentView!!.setParkingTime(time)
+                exitTransactionPaymentView!!.setPayAmount(amount)
+                exitTransactionPaymentView!!.setStatusLabel("EXITING", statusColor)
+                currentCardNo = text1
+                if (PaymentConfig.load(this).isReady()) {
+                    paymentManager?.startPayment(text1)
+                }
             }
             Page.COMPLETED_EXIT -> {
                 completedExitView!!.setPlate(text1)
                 completedExitView!!.setTypeBadge(text3.uppercase())
                 completedExitView!!.setExitDate(text4)
+                val paymentWasUsed = paymentManager != null &&
+                    paymentManager!!.state.value is PaymentState.Confirmed
+                if (paymentWasUsed) {
+                    completedExitView!!.setPaymentConfirmed("Payment Confirmed, Paid via QR")
+                } else {
+                    completedExitView!!.resetThankYou()
+                }
+                gateTimeoutJob?.cancel()
+                paymentManager?.destroy()
+                setupPaymentManager()
             }
             else -> { /* IDLE, EXIT_IDLE — no view updates needed */ }
         }
@@ -414,6 +592,91 @@ class OverlayService : Service() {
         val role = getSharedPreferences("box_state", MODE_PRIVATE)
             .getString("role", "entry") ?: "entry"
         showPage(PageRouter.initialPageForRole(role))
+    }
+
+    private fun setupPaymentManager() {
+        paymentManager?.destroy()
+        paymentManager = null
+        val config = PaymentConfig.load(this)
+        if (!config.isReady()) return
+        val apiClient = PaymentApiClient(config.baseUrl, config.apiKey)
+        val mgr = PaymentManager(apiClient, config.pollIntervalMs, scope)
+        paymentManager = mgr
+        scope.launch {
+            mgr.state.collect { state -> updatePaymentUI(state) }
+        }
+    }
+
+    private fun updatePaymentUI(state: PaymentState) {
+        assert(exitTransactionPaymentView != null) { "paymentView null" }
+        val view = exitTransactionPaymentView ?: return
+        countdownJob?.cancel()
+        if (state !is PaymentState.Confirmed) gateTimeoutJob?.cancel()
+        when (state) {
+            is PaymentState.Initiating -> {
+                view.setPaymentStatus("Connecting...", Color.parseColor("#E8A000"))
+                view.setPaymentTimer("")
+            }
+            is PaymentState.AwaitingPayment -> {
+                view.setQrBitmap(state.qrBitmap)
+                view.setPaymentStatus("Awaiting Payment...", Color.parseColor("#E8A000"))
+                countdownJob = scope.launch {
+                    while (isActive) {
+                        val remaining = state.expiresAtUnix - (System.currentTimeMillis() / 1000)
+                        if (remaining <= 0) break
+                        val mm = remaining / 60
+                        val ss = remaining % 60
+                        view.setPaymentTimer("Expires in %02d:%02d".format(mm, ss))
+                        delay(1000)
+                    }
+                }
+            }
+            is PaymentState.Confirmed -> {
+                val green = Color.parseColor("#22C55E")
+                view.clearPayment()
+                view.showCheckmark()
+                view.setPaymentStatus("Processing...", green)
+                view.setPaymentTimer("")
+                view.setStatusLabel("EXITING", green)
+                view.setPayLabel("PAID")
+                view.setPayAmountColor(green)
+                gateTimeoutJob?.cancel()
+                gateTimeoutJob = scope.launch {
+                    delay(20_000)
+                    val yellow = Color.parseColor("#E8A000")
+                    view.showWarningIcon()
+                    view.setPaymentStatus("Payment confirmed, gate not responding.", yellow)
+                    view.setPaymentTimer("")
+                    view.setHelpText(
+                        "Please contact parking staff.",
+                        Color.parseColor("#FF5555")
+                    )
+                }
+            }
+            is PaymentState.Expired -> {
+                val red = Color.parseColor("#FF5555")
+                view.clearPayment()
+                view.showExpiredIcon()
+                view.setStatusLabel("EXPIRED", red)
+                view.setPaymentStatus("Payment Expired", red)
+                view.setPaymentTimer("Please scan ticket again")
+            }
+            is PaymentState.Error -> {
+                val red = Color.parseColor("#FF5555")
+                view.clearPayment()
+                view.showErrorIcon()
+                view.setStatusLabel("ERROR", red)
+                view.setPaymentStatus(state.message, red)
+                view.setPaymentTimer("Please scan ticket again")
+                view.setPaymentTimerColor(Color.parseColor("#888888"))
+            }
+            is PaymentState.FeatureUnavailable -> {
+                view.setPaymentStatus("Online payment unavailable", Color.parseColor("#888888"))
+                view.clearPayment()
+            }
+            is PaymentState.Idle -> view.clearPayment()
+            is PaymentState.NotConfigured -> view.clearPayment()
+        }
     }
 
     private fun updateDebugVisibility(tvEmpty: TextView, recycler: RecyclerView) {
@@ -442,6 +705,9 @@ class OverlayService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        paymentManager?.destroy()
+        countdownJob?.cancel()
+        gateTimeoutJob?.cancel()
         scope.cancel()
         if (rootView != null) {
             windowManager?.removeView(rootView)
