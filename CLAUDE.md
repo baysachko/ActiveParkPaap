@@ -103,6 +103,8 @@ Frames: `Hdmbk` (Entry Idle), `bMAUt` (Transaction Entry), `bJGHf` (Exit Idle), 
 - **Remote workflow**: AnyDesk → customer server (same LAN) → `adb connect box-ip:5555` → `scrcpy` for full UI control.
 - **Security**: iptables drops all connections to port 5555 except the saved server IP.
 - **`persist.*` props NOT supported** on RK3288 ROM — must use build.prop + setprop on every boot.
+- **`sed` not available** on ROM — use `busybox sed` for build.prop edits.
+- **Skip adbd restart** if already on port 5555 (`isAdbEnabled()` check) — avoids killing active scrcpy sessions on app re-enter.
 
 ## QR Payment Integration
 

@@ -131,7 +131,7 @@ object AdbRemoteHelper {
     /** Pure: build sed command to set adb port in build.prop */
     fun buildPersistCommand(port: Int = ADB_PORT): String {
         return "mount -o remount,rw /system && " +
-            "sed -i 's/^$ADB_PORT_PROP=.*/$ADB_PORT_PROP=$port/' $BUILD_PROP && " +
+            "busybox sed -i 's/^$ADB_PORT_PROP=.*/$ADB_PORT_PROP=$port/' $BUILD_PROP && " +
             "mount -o remount,ro /system"
     }
 
@@ -179,14 +179,20 @@ object AdbRemoteHelper {
         if (ip.isEmpty()) return listOf("ADB: no IP configured, skip")
         val logs = mutableListOf<String>()
         return try {
-            // Verify build.prop has correct port
+            // Check runtime port first — never restart adbd if already on correct port
+            val adbAlive = isAdbEnabled()
             val propPort = getBuildPropAdbPort()
-            if (propPort == "$ADB_PORT") {
-                logs.add("ADB: build.prop port=$ADB_PORT OK")
-            } else {
+            if (propPort != "$ADB_PORT") {
                 exec(buildPersistCommand())
+                logs.add("ADB: build.prop was '$propPort', fixed to $ADB_PORT")
+            } else {
+                logs.add("ADB: build.prop port=$ADB_PORT OK")
+            }
+            if (adbAlive) {
+                logs.add("ADB: adbd already on port $ADB_PORT, skip restart")
+            } else {
                 buildAdbEnableCommands().forEach { exec(it) }
-                logs.add("ADB: build.prop was '$propPort', fixed to $ADB_PORT + restarted adbd")
+                logs.add("ADB: adbd not on $ADB_PORT, setprop + restarted")
             }
             // Iptables don't survive reboot — always reapply
             if (isFirewallApplied(ip)) {
