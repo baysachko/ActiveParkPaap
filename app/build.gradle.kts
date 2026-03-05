@@ -34,12 +34,14 @@ android {
 }
 
 dependencies {
+    implementation(files("libs/autoreplyprint.aar"))
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("androidx.recyclerview:recyclerview:1.3.2")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("com.squareup.okhttp3:okhttp:3.12.13")
+    implementation("com.google.zxing:core:3.5.2")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20231013")

@@ -17,6 +17,7 @@ Sits on top of PAAP (`com.anziot.park`) — the Chinese parking app that handles
 - **Stack**: Kotlin + XML views (NO Compose — Compose requires minSdk 23, box is API 22)
 - **compileSdk**: 34, **minSdk**: 22, **targetSdk**: 34
 - **Dependencies pinned** to older versions for compileSdk 34 compat (e.g. core-ktx:1.12.0)
+- **App icon**: `parking_sign.png` (P in circle) — PNG mipmaps (48–192px), no adaptive icon XMLs
 - Build: `./gradlew assembleDebug`
 - APK: `app/build/outputs/apk/debug/app-debug.apk`
 
@@ -116,6 +117,30 @@ Frames: `Hdmbk` (Entry Idle), `bMAUt` (Transaction Entry), `bJGHf` (Exit Idle), 
 - **409 handling**: existing transaction — returns cached QR + ExistingTranId + ExpiresAt + ExpiresIn from Redis
 - **Dependencies**: OkHttp3 `3.12.13` (last Java 7 compatible), coroutines-test, mockito-core
 - **Tests**: PaymentConfigTest (6), PaymentApiClientTest (16), PaymentManagerTest (17) — all pure logic, no Robolectric
+
+## Custom Ticket Printing (Direct USB Printer)
+
+- **Why**: PAAP's UDP Print command (`{"command":"Print","title":"...","content":"...","QRcode":"..."}`) has fixed layout — no custom design. We bypass it entirely.
+- **How**: PAAP config → "Enable New Print" ON → PAAP skips printing but still creates parking record, opens gate, TTS, display — all normal. Our app prints via direct USB.
+- **Library**: `autoreplyprint.aar` in `app/libs/` — JNA-based ESC/POS SDK from Caysn. Contains `libautoreplyprint.so` + `libjnidispatch.so` for armeabi-v7a/arm64-v8a/x86.
+- **Printer**: "KC PRINT PORT" USB thermal printer, VID=0x0FE6, PID=0x811E, on USB bus 005. Driver: `usblp`. No `/dev/usblp0` node — accessed via Android USB Host API.
+- **`TicketPrinter.kt`**: `printTicket(title, ticketNo, entryDate, footer1, footer2, qrUrl)` — opens USB printer via `AutoReplyPrint.INSTANCE.CP_Port_OpenUsb("VID:0x0FE6,PID:0x811E", 0)`. Renders ticket as `Bitmap` on `Canvas` with all dynamic fields, prints via `CP_Pos_PrintRasterImageFromData_Helper.PrintRasterImageFromBitmap()`, then `CP_Pos_FeedAndHalfCutPaper()`. Full custom layout (Space Grotesk 18pt, QR, dividers).
+- **Status check**: `CP_Pos_QueryRTStatus(handle, 30000)` — checks OFFLINE, COVER_UP, NO_PAPER, ERROR, CUTTER via `CP_RTSTATUS_Helper`. Status values are `Long`.
+- **Debug UI**: "Printer:" row with CardNo input + "Print" button + ON/OFF toggle + status text. Wired in `OverlayService.setupDebugView()`.
+- **Tested & working**: Port opens, bitmap renders (550xN), prints successfully, port closes. No sleep needed before close — printer buffers data internally.
+- **PAAP conflict**: With "Enable New Print" ON, PAAP doesn't hold the USB printer, so no conflict.
+- **Entry flow with custom print**: PushButton → parking system creates record + gate opens + TTS (no print) → our app detects PrintTicket in logcat → sends own print via USB. CardNo from QR URL or Display text1 field.
+- **Reference source**: PAAP's printer code in `/Users/vodka/Documents/Business/ParkingSystem/TicketboxAndroidDevelopment/paapsmtTest/paapsmtTest/app/src/main/java/com/sztigerwong/paap/ui/MainActivity.java` — uses same AutoReplyPrint library, renders bitmap on Canvas, prints as raster image.
+- **Content field format**: `;`-separated — `[0]=footer1, [1]=footer2, [2]=entryDate, [3]=cardNo, [4]=scanLabel(unused)`. Parsed in `PrintTicket` data class via `contentParts`.
+- **Auto-print wired**: `OverlayService.collectEvents()` catches `PrintTicket` → `handlePrintTicket()` → `TicketPrinter.printTicket()` on IO dispatcher with all dynamic fields from PAAP.
+- **Print toggle**: SharedPreferences `"printer_config"."enabled"` (default `true`). ON/OFF button in debug UI Printer row. When OFF, `handlePrintTicket()` skips — PAAP prints natively.
+
+## Hardware API Docs
+
+- **TGW RFID & Ticket Parking API**: `/Users/vodka/Documents/Business/ParkingSystem/TicketboxAndroidDevelopment/md/TGW_RFID_Ticket_Parking_API.md` — UDP commands (Print, openDoor, speakOut, Takecard, etc.), port 8000. Upload events (PushButton, VehicleSensing, card readers, printer status).
+- **SMDT Android Board API**: `/Users/vodka/Documents/Business/ParkingSystem/TicketboxAndroidDevelopment/md/API_Android_Board.md` — `SmdtManager` via `smdt.jar`. GPIO, watchdog, serial, display, USB, network. No printer API.
+- **IoT-3288A Spec**: `/Users/vodka/Documents/Business/ParkingSystem/TicketboxAndroidDevelopment/md/IoT3288A_Specification.md` — RK3288 board hardware spec (PCB, connectors, power). No software APIs.
+- **PAAP source (reference)**: `/Users/vodka/Documents/Business/ParkingSystem/TicketboxAndroidDevelopment/paapsmtTest/` — TigerWong's test app. Has `AutoReplyPrint` printer code, `ZxingUtils` QR generation, UART/serial device handling.
 
 ## Critical Warnings
 

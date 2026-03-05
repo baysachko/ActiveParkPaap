@@ -18,9 +18,38 @@ class PaapEventTest {
     }
 
     @Test
-    fun `PrintTicket summary`() {
-        val e = PaapEvent.PrintTicket("T", "C", "QR", PaapEvent.Direction.INBOUND)
-        assertEquals("PRINT: T | QR=QR", e.summary())
+    fun `PrintTicket summary includes content and ticketNo`() {
+        val content = "Keep ticket;Lost no comp;03/05/2026 16:22:14;0103052026162214;Scan"
+        val e = PaapEvent.PrintTicket("Title", content, "QR", PaapEvent.Direction.INBOUND)
+        assertEquals("PRINT: Title | ticket=0103052026162214 | content=$content | QR=QR", e.summary())
+    }
+
+    @Test
+    fun `PrintTicket parses content fields`() {
+        val content = "Please keep the ticket;Lost not compensation;03/05/2026 16:22:14;0103052026162214;Scan to pay"
+        val e = PaapEvent.PrintTicket("T", content, "QR", PaapEvent.Direction.INBOUND)
+        assertEquals("Please keep the ticket", e.footer1)
+        assertEquals("Lost not compensation", e.footer2)
+        assertEquals("03/05/2026 16:22:14", e.entryDate)
+        assertEquals("0103052026162214", e.ticketNo)
+    }
+
+    @Test
+    fun `PrintTicket handles missing content fields gracefully`() {
+        val e = PaapEvent.PrintTicket("T", "only footer1", "QR", PaapEvent.Direction.INBOUND)
+        assertEquals("only footer1", e.footer1)
+        assertEquals("", e.footer2)
+        assertEquals("", e.entryDate)
+        assertEquals("", e.ticketNo)
+    }
+
+    @Test
+    fun `PrintTicket handles empty content`() {
+        val e = PaapEvent.PrintTicket("T", "", "QR", PaapEvent.Direction.INBOUND)
+        assertEquals("", e.footer1)
+        assertEquals("", e.footer2)
+        assertEquals("", e.entryDate)
+        assertEquals("", e.ticketNo)
     }
 
     @Test

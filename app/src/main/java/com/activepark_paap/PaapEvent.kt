@@ -23,7 +23,13 @@ sealed class PaapEvent(val timestamp: Long = System.currentTimeMillis()) {
         val content: String,
         val qrCode: String,
         val direction: Direction
-    ) : PaapEvent()
+    ) : PaapEvent() {
+        val contentParts: List<String> = content.split(";")
+        val footer1: String get() = contentParts.getOrElse(0) { "" }
+        val footer2: String get() = contentParts.getOrElse(1) { "" }
+        val entryDate: String get() = contentParts.getOrElse(2) { "" }
+        val ticketNo: String get() = contentParts.getOrElse(3) { "" }
+    }
 
     data class DisplayUpdate(
         val texts: Map<String, DisplayField>,
@@ -73,7 +79,7 @@ sealed class PaapEvent(val timestamp: Long = System.currentTimeMillis()) {
     fun summary(): String = when (this) {
         is GateOpen -> "GATE OPEN (delay=${delay}ms, io=$io)"
         is Speak -> "TTS: \"$text\" [$language]"
-        is PrintTicket -> "PRINT: $title | QR=$qrCode"
+        is PrintTicket -> "PRINT: $title | ticket=$ticketNo | content=$content | QR=$qrCode"
         is DisplayUpdate -> "DISPLAY: ${texts.entries.joinToString { "${it.key}=${it.value.text}" }}"
         is VehicleSensing -> "VEHICLE: $status"
         is PushButton -> if (pressed) "BUTTON PRESSED" else "BUTTON RELEASED"

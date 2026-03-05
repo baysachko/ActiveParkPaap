@@ -304,6 +304,60 @@ class OverlayService : Service() {
             setupPaymentManager()
         }
 
+        // Ticket printer toggle + test
+        val etPrintCardNo = debugView!!.findViewById<EditText>(R.id.etPrintCardNo)
+        val btnPrintTest = debugView!!.findViewById<Button>(R.id.btnPrintTest)
+        val tvPrintStatus = debugView!!.findViewById<TextView>(R.id.tvPrintStatus)
+        val btnPrintToggle = debugView!!.findViewById<Button>(R.id.btnPrintToggle)
+        val printPrefs = getSharedPreferences("printer_config", MODE_PRIVATE)
+        fun updatePrintToggle() {
+            val on = printPrefs.getBoolean("enabled", true)
+            btnPrintToggle.text = if (on) "ON" else "OFF"
+            btnPrintToggle.backgroundTintList = android.content.res.ColorStateList.valueOf(
+                Color.parseColor(if (on) "#388E3C" else "#666666")
+            )
+        }
+        updatePrintToggle()
+        btnPrintToggle.setOnClickListener {
+            val on = printPrefs.getBoolean("enabled", true)
+            printPrefs.edit().putBoolean("enabled", !on).commit()
+            updatePrintToggle()
+        }
+        etPrintCardNo.setText("0103052026131032")
+        btnPrintTest.setOnClickListener {
+            val cardNo = etPrintCardNo.text.toString().trim()
+            if (cardNo.isEmpty()) {
+                tvPrintStatus.text = "Enter card no"
+                tvPrintStatus.setTextColor(Color.parseColor("#FF5555"))
+                return@setOnClickListener
+            }
+            tvPrintStatus.text = "Printing..."
+            tvPrintStatus.setTextColor(Color.parseColor("#E8A000"))
+            scope.launch(Dispatchers.IO) {
+                val qrUrl = "https://aipark-pay.activefasts.com/get-ticket/$cardNo"
+                val result = TicketPrinter(this@OverlayService).printTicket(
+                    title = "ActivePark Parking System",
+                    ticketNo = cardNo,
+                    entryDate = "03/05/2026 16:22:14",
+                    footer1 = "Please keep the ticket",
+                    footer2 = "Lost not compensation",
+                    qrUrl = qrUrl
+                )
+                withContext(Dispatchers.Main) {
+                    when (result) {
+                        is TicketPrinter.PrintResult.Success -> {
+                            tvPrintStatus.text = "OK"
+                            tvPrintStatus.setTextColor(Color.parseColor("#22C55E"))
+                        }
+                        is TicketPrinter.PrintResult.Error -> {
+                            tvPrintStatus.text = result.message
+                            tvPrintStatus.setTextColor(Color.parseColor("#FF5555"))
+                        }
+                    }
+                }
+            }
+        }
+
         debugView!!.findViewById<Button>(R.id.btnClose).setOnClickListener {
             stopSelf()
         }
@@ -549,6 +603,7 @@ class OverlayService : Service() {
                 events.add(0, event)
                 if (events.size > 200) events.subList(200, events.size).clear()
                 adapter.notifyDataSetChanged()
+                if (event is PaapEvent.PrintTicket) handlePrintTicket(event)
                 if (event is PaapEvent.DisplayUpdate) handleDisplayUpdate(event)
                 if (event is PaapEvent.PushButton) {
                     val showOn = currentPage == Page.IDLE || currentPage == Page.TRANSACTION
@@ -567,6 +622,28 @@ class OverlayService : Service() {
                     }
                 }
             }
+        }
+    }
+
+    private fun handlePrintTicket(event: PaapEvent.PrintTicket) {
+        assert(event.ticketNo.isNotEmpty()) { "PrintTicket ticketNo empty" }
+        assert(event.qrCode.isNotEmpty()) { "PrintTicket qrCode empty" }
+        val enabled = getSharedPreferences("printer_config", MODE_PRIVATE)
+            .getBoolean("enabled", true)
+        if (!enabled) {
+            Log.e("OverlayService", "Custom print disabled, skipping")
+            return
+        }
+        scope.launch(Dispatchers.IO) {
+            val result = TicketPrinter(this@OverlayService).printTicket(
+                title = event.title,
+                ticketNo = event.ticketNo,
+                entryDate = event.entryDate,
+                footer1 = event.footer1,
+                footer2 = event.footer2,
+                qrUrl = event.qrCode
+            )
+            Log.e("OverlayService", "PrintTicket result: $result")
         }
     }
 
