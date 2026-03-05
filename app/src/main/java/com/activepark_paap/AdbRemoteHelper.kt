@@ -43,7 +43,7 @@ object AdbRemoteHelper {
         )
     }
 
-    /** Pure: commands to disable adb TCP */
+    /** Pure: commands to persistently disable adb TCP */
     fun buildAdbDisableCommands(port: Int = ADB_PORT): List<String> {
         return listOf(
             "setprop service.adb.tcp.port -1",
@@ -110,6 +110,95 @@ object AdbRemoteHelper {
             output == "$ADB_PORT"
         } catch (e: Exception) {
             false
+        }
+    }
+
+    fun isFirewallApplied(ip: String): Boolean {
+        assert(isValidIp(ip)) { "invalid IP: $ip" }
+        return try {
+            val proc = Runtime.getRuntime().exec(arrayOf("su", "-c", "iptables -L INPUT -n"))
+            val output = proc.inputStream.bufferedReader().readText()
+            proc.waitFor()
+            output.contains(ip) && output.contains("DROP") && output.contains("$ADB_PORT")
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private const val BUILD_PROP = "/system/build.prop"
+    private const val ADB_PORT_PROP = "service.adb.tcp.port"
+
+    /** Pure: build sed command to set adb port in build.prop */
+    fun buildPersistCommand(port: Int = ADB_PORT): String {
+        return "mount -o remount,rw /system && " +
+            "sed -i 's/^$ADB_PORT_PROP=.*/$ADB_PORT_PROP=$port/' $BUILD_PROP && " +
+            "mount -o remount,ro /system"
+    }
+
+    /** Read current adb port value from build.prop */
+    fun getBuildPropAdbPort(): String {
+        return try {
+            val proc = Runtime.getRuntime().exec(arrayOf("su", "-c",
+                "grep '^$ADB_PORT_PROP=' $BUILD_PROP"))
+            val output = proc.inputStream.bufferedReader().readText().trim()
+            proc.waitFor()
+            output.substringAfter("=", "")
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
+    /** Write adb port to build.prop permanently + setprop + restart adbd for immediate effect */
+    fun persistAdbPort(): List<String> {
+        val logs = mutableListOf<String>()
+        return try {
+            val current = getBuildPropAdbPort()
+            if (current == "$ADB_PORT") {
+                logs.add("ADB: build.prop already has port $ADB_PORT")
+            } else {
+                exec(buildPersistCommand())
+                logs.add("ADB: build.prop updated $ADB_PORT_PROP=$ADB_PORT (was $current)")
+            }
+            // Also apply immediately via setprop
+            if (!isAdbEnabled()) {
+                buildAdbEnableCommands().forEach { exec(it) }
+                logs.add("ADB: setprop + adbd restarted")
+            } else {
+                logs.add("ADB: adbd already on port $ADB_PORT")
+            }
+            logs
+        } catch (e: Exception) {
+            logs.add("ADB: persist error — ${e.message}")
+            logs
+        }
+    }
+
+    /** Boot-time check: only reapply iptables (build.prop handles adb port) */
+    fun ensureAdbConfigured(ctx: Context): List<String> {
+        val ip = getSavedIp(ctx)
+        if (ip.isEmpty()) return listOf("ADB: no IP configured, skip")
+        val logs = mutableListOf<String>()
+        return try {
+            // Verify build.prop has correct port
+            val propPort = getBuildPropAdbPort()
+            if (propPort == "$ADB_PORT") {
+                logs.add("ADB: build.prop port=$ADB_PORT OK")
+            } else {
+                exec(buildPersistCommand())
+                buildAdbEnableCommands().forEach { exec(it) }
+                logs.add("ADB: build.prop was '$propPort', fixed to $ADB_PORT + restarted adbd")
+            }
+            // Iptables don't survive reboot — always reapply
+            if (isFirewallApplied(ip)) {
+                logs.add("ADB: iptables already applied for $ip")
+            } else {
+                buildFirewallCommands(ip).forEach { exec(it) }
+                logs.add("ADB: iptables applied for $ip")
+            }
+            logs
+        } catch (e: Exception) {
+            logs.add("ADB: error — ${e.message}")
+            logs
         }
     }
 

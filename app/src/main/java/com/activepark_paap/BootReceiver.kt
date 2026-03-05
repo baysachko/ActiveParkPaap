@@ -9,15 +9,14 @@ class BootReceiver : BroadcastReceiver() {
 
     companion object {
         const val ACTION_RESTART = "com.activepark_paap.ACTION_RESTART"
+        private const val TAG = "BootReceiver"
     }
 
     override fun onReceive(context: Context, intent: Intent) {
-        Log.e("BootReceiver", "onReceive action=${intent.action}")
+        Log.e(TAG, "onReceive action=${intent.action}")
         // Clear guard pause flag on boot
         @Suppress("DEPRECATION") context.getSharedPreferences("guard_state", Context.MODE_MULTI_PROCESS)
             .edit().putBoolean("paused", false).commit()
-        // Enable adb TCP locked to saved server IP (if configured)
-        AdbRemoteHelper.enableAdbWithFirewall(context)
 
         context.startService(Intent(context, LogcatReaderService::class.java))
         context.startService(Intent(context, OverlayService::class.java))

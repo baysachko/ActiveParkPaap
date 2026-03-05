@@ -38,11 +38,11 @@ Sits on top of PAAP (`com.anziot.park`) — the Chinese parking app that handles
 - `PaapEvent.kt` — sealed class: GateOpen, Speak, PrintTicket, DisplayUpdate, VehicleSensing, PushButton, Heartbeat, OnlineCheck, LinphoneCall, DebugLog, Unknown
 - `OverlayService.kt` — draws UI via WindowManager overlay. Uses `TYPE_APPLICATION_OVERLAY` on API 26+ (emulator), `TYPE_SYSTEM_ALERT` on API 22 (box). Monitors PAAP foreground state via `su -c "dumpsys activity activities"` every 5s — shows red warning banner when PAAP not resumed. Manages page switching via `Page` enum and `showPage()`. Role toggle (entry/exit) is sole authority for page routing — entry mode only shows IDLE/TRANSACTION, exit mode only shows EXIT_IDLE/EXIT_TRANSACTION/COMPLETED_EXIT.
 - `MainActivity.kt` — launcher: starts LogcatReaderService + OverlayService, then finishes. Handles overlay permission prompt on API 23+.
-- `BootReceiver.kt` — `BOOT_COMPLETED` + custom `ACTION_RESTART` receiver. Starts all 3 services, clears guard pause flag.
+- `BootReceiver.kt` — `BOOT_COMPLETED` + `ACTION_RESTART` receiver. Starts all 3 services, clears guard pause flag. ADB setup moved to OverlayService.
 - `GuardService.kt` — watchdog in `:guard` process. Uses `GuardWatchdog` for pure restart logic.
 - `GuardWatchdog.kt` — testable restart logic. 8s debounce, `killed` flag for pause.
 - `EventLog.kt` — JSONL event persistence. 7 daily files, auto-prune. Testable class (inject `logDir`).
-- `AdbRemoteHelper.kt` — enables adb TCP :5555 + iptables firewall to saved server IP. Used by BootReceiver (on boot) and debug UI (on save).
+- `AdbRemoteHelper.kt` — enables adb TCP :5555 + iptables firewall to saved server IP. Writes `service.adb.tcp.port=5555` to `/system/build.prop` on first save (ROM resets it to `0` on reboot, so `ensureAdbConfigured()` re-applies on every boot). `isFirewallApplied()` checks iptables state. `persistAdbPort()` for save button, `ensureAdbConfigured()` for boot. Used by OverlayService (boot + save).
 - `payment/PaymentConfig.kt` — SharedPreferences wrapper (`baseUrl`, `apiKey`, `pollIntervalMs`, `enabled`). `isReady()` = enabled + baseUrl + apiKey non-empty.
 - `payment/PaymentState.kt` — sealed class: Idle, Initiating, AwaitingPayment(qrBitmap, tranId, expiresAtUnix, currency), Confirmed, Expired, Error(message), NotConfigured, FeatureUnavailable.
 - `payment/PaymentApiClient.kt` — OkHttp3 wrapper. `initiate(cardNo)`, `pollStatus(tranId)`, `cancel(cardNo)`. Auth via `X-API-Key` header. 409 = existing transaction (returns cached QR). `baseUrl` = domain only (client appends `/api/v1/terminal-box/payment/...`).
@@ -95,12 +95,14 @@ Frames: `Hdmbk` (Entry Idle), `bMAUt` (Transaction Entry), `bJGHf` (Exit Idle), 
 
 ## Remote Access (ADB + scrcpy)
 
-- **AdbRemoteHelper.kt** — enables adb TCP on port 5555, locks with iptables to a single server IP. Persisted in `SharedPreferences("adb_remote", "server_ip")`.
-- **BootReceiver** calls `AdbRemoteHelper.enableAdbWithFirewall(context)` on boot — adb+iptables auto-restored after reboot.
-- **Debug screen** has Server IP field + Save button + ADB status indicator (green=active, red=off).
-- **One-time setup**: USB install → 6-tap debug → enter server IP → Save → walk away.
+- **AdbRemoteHelper.kt** — enables adb TCP on port 5555, locks with iptables to a single server IP. Server IP persisted in `SharedPreferences("adb_remote", "server_ip")`. Port persisted via `/system/build.prop` (`service.adb.tcp.port=5555`), but ROM resets to `0` on reboot.
+- **Boot flow**: OverlayService `ensureAdbOnStartup()` → checks build.prop port (re-applies if not 5555) → checks iptables (re-applies if missing) → logs all actions to event log.
+- **Save flow**: `persistAdbPort()` writes build.prop + setprop + adbd restart → `enableAdbWithFirewall()` applies iptables → all logged to event log.
+- **Debug screen** has Server IP field + Save button + ADB status indicator (polls every 5s while debug visible, green=active, red=off).
+- **One-time setup**: USB install → launch app once (required for BOOT_COMPLETED) → 6-tap debug → enter server IP → Save → walk away.
 - **Remote workflow**: AnyDesk → customer server (same LAN) → `adb connect box-ip:5555` → `scrcpy` for full UI control.
 - **Security**: iptables drops all connections to port 5555 except the saved server IP.
+- **`persist.*` props NOT supported** on RK3288 ROM — must use build.prop + setprop on every boot.
 
 ## QR Payment Integration
 

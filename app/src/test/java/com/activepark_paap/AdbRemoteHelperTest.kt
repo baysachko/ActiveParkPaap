@@ -88,4 +88,14 @@ class AdbRemoteHelperTest {
         assertEquals("stop adbd", cmds[1])
         assertEquals("start adbd", cmds[2])
     }
+
+    // --- buildPersistCommand ---
+
+    @Test fun `persist command - remount sed remount`() {
+        val cmd = AdbRemoteHelper.buildPersistCommand(5555)
+        assertTrue(cmd.contains("mount -o remount,rw /system"))
+        assertTrue(cmd.contains("sed -i"))
+        assertTrue(cmd.contains("service.adb.tcp.port=5555"))
+        assertTrue(cmd.contains("mount -o remount,ro /system"))
+    }
 }

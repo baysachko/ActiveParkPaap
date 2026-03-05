@@ -55,6 +55,7 @@ class OverlayService : Service() {
     private var currentCardNo: String? = null
     private var countdownJob: Job? = null
     private var gateTimeoutJob: Job? = null
+    private var adbStatusJob: Job? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -69,6 +70,7 @@ class OverlayService : Service() {
         createOverlay()
         setupPaymentManager()
         collectEvents()
+        ensureAdbOnStartup()
         restoreRole()
         monitorPaap()
     }
@@ -224,14 +226,22 @@ class OverlayService : Service() {
         val btnSaveIp = debugView!!.findViewById<Button>(R.id.btnSaveIp)
         val tvAdbStatus = debugView!!.findViewById<TextView>(R.id.tvAdbStatus)
 
-        fun updateAdbStatus() {
-            val enabled = AdbRemoteHelper.isAdbEnabled()
-            val ip = AdbRemoteHelper.getSavedIp(this)
-            tvAdbStatus.text = if (enabled && ip.isNotEmpty()) "ADB:$ip" else "ADB:OFF"
-            tvAdbStatus.setTextColor(Color.parseColor(if (enabled) "#22C55E" else "#FF5555"))
+        fun startAdbStatusPolling() {
+            adbStatusJob?.cancel()
+            adbStatusJob = scope.launch(Dispatchers.IO) {
+                while (isActive) {
+                    val enabled = AdbRemoteHelper.isAdbEnabled()
+                    val ip = AdbRemoteHelper.getSavedIp(this@OverlayService)
+                    withContext(Dispatchers.Main) {
+                        tvAdbStatus.text = if (enabled && ip.isNotEmpty()) "ADB:$ip" else "ADB:OFF"
+                        tvAdbStatus.setTextColor(Color.parseColor(if (enabled) "#22C55E" else "#FF5555"))
+                    }
+                    delay(5000)
+                }
+            }
         }
         etServerIp.setText(AdbRemoteHelper.getSavedIp(this))
-        updateAdbStatus()
+        startAdbStatusPolling()
 
         btnSaveIp.setOnClickListener {
             val ip = etServerIp.text.toString().trim()
@@ -239,8 +249,9 @@ class OverlayService : Service() {
                 AdbRemoteHelper.saveIp(this, ip)
                 addDebugLog("ADB IP saved: $ip")
                 scope.launch(Dispatchers.IO) {
+                    val logs = AdbRemoteHelper.persistAdbPort()
                     AdbRemoteHelper.enableAdbWithFirewall(ip)
-                    withContext(Dispatchers.Main) { updateAdbStatus() }
+                    withContext(Dispatchers.Main) { logs.forEach { addDebugLog(it) } }
                 }
             } else {
                 etServerIp.setError("Invalid IP")
@@ -423,6 +434,7 @@ class OverlayService : Service() {
 
         // Restore persistent root if coming from debug
         if (currentPage == Page.DEBUG) {
+            adbStatusJob?.cancel()
             val root = rootView as FrameLayout
             root.removeAllViews()
             val inflater = LayoutInflater.from(this)
@@ -512,6 +524,15 @@ class OverlayService : Service() {
                     warning?.visibility = if (paapResumed) View.GONE else View.VISIBLE
                 }
                 delay(5000)
+            }
+        }
+    }
+
+    private fun ensureAdbOnStartup() {
+        scope.launch(Dispatchers.IO) {
+            val logs = AdbRemoteHelper.ensureAdbConfigured(this@OverlayService)
+            withContext(Dispatchers.Main) {
+                logs.forEach { addDebugLog(it) }
             }
         }
     }
