@@ -43,6 +43,7 @@ sealed class PaapEvent(val timestamp: Long = System.currentTimeMillis()) {
     ) : PaapEvent()
 
     data class PushButton(
+        val pressed: Boolean,
         val direction: Direction
     ) : PaapEvent()
 
@@ -75,7 +76,7 @@ sealed class PaapEvent(val timestamp: Long = System.currentTimeMillis()) {
         is PrintTicket -> "PRINT: $title | QR=$qrCode"
         is DisplayUpdate -> "DISPLAY: ${texts.entries.joinToString { "${it.key}=${it.value.text}" }}"
         is VehicleSensing -> "VEHICLE: $status"
-        is PushButton -> "BUTTON PRESSED"
+        is PushButton -> if (pressed) "BUTTON PRESSED" else "BUTTON RELEASED"
         is Heartbeat -> "HEARTBEAT"
         is OnlineCheck -> "ONLINE CHECK"
         is LinphoneCall -> "CALL: $fromState → $toState"

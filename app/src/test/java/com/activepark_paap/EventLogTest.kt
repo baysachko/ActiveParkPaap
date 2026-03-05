@@ -60,7 +60,7 @@ class EventLogTest {
         val json = log.eventToJson(PaapEvent.Heartbeat(PaapEvent.Direction.OUTBOUND))
         yesterday.writeText(json.toString() + "\n")
         // Write today
-        log.append(PaapEvent.PushButton(PaapEvent.Direction.INBOUND))
+        log.append(PaapEvent.PushButton(pressed = true, direction = PaapEvent.Direction.INBOUND))
         val all = log.loadAll()
         assertEquals(2, all.size)
     }

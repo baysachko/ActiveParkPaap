@@ -1,6 +1,7 @@
 package com.activepark_paap.ui.common
 
 import android.view.View
+import android.widget.ImageView
 import android.widget.TextView
 import com.activepark_paap.R
 import kotlinx.coroutines.CoroutineScope
@@ -16,6 +17,7 @@ class OverlayBarHelper(private val root: View) {
     private val tvDate: TextView = root.findViewById(R.id.tvDate)
     private val tvNetStatus: TextView = root.findViewById(R.id.tvNetStatus)
     private val phoneIndicator: View = root.findViewById(R.id.phoneIndicator)
+    private val ivHandPress: ImageView = root.findViewById(R.id.ivHandPress)
 
     private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
     private val dateFormat = SimpleDateFormat("EEEE, dd MMM yyyy", Locale.ENGLISH)
@@ -60,5 +62,9 @@ class OverlayBarHelper(private val root: View) {
 
     fun setCallActive(active: Boolean) {
         phoneIndicator.visibility = if (active) View.VISIBLE else View.GONE
+    }
+
+    fun setHandPress(pressed: Boolean) {
+        ivHandPress.visibility = if (pressed) View.VISIBLE else View.GONE
     }
 }

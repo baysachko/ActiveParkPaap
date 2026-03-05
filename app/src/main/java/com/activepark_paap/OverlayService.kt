@@ -550,6 +550,10 @@ class OverlayService : Service() {
                 if (events.size > 200) events.subList(200, events.size).clear()
                 adapter.notifyDataSetChanged()
                 if (event is PaapEvent.DisplayUpdate) handleDisplayUpdate(event)
+                if (event is PaapEvent.PushButton) {
+                    val showOn = currentPage == Page.IDLE || currentPage == Page.TRANSACTION
+                    barHelper?.setHandPress(event.pressed && showOn)
+                }
                 if (event is PaapEvent.LinphoneCall) {
                     callActive = PageRouter.isCallActive(event.toState)
                     barHelper?.setCallActive(callActive)

@@ -7,9 +7,25 @@ object PaapEventParser {
     private val INBOUND_PATTERN = Regex("""UdpManager\s*:\s*handleUdpReadData\s+data\s*=\s*(.+)""")
     private val OUTBOUND_PATTERN = Regex("""UdpWriterManager\s*:\s*send\s+data\s*=\s*(.+)""")
     private val LINPHONE_STATE_PATTERN = Regex("""moving from state (\S+) to (\S+)""")
+    private val IO2_PATTERN = Regex("""handleIo2\s+ioValue\s*=\s*(\d)""")
+
+    /** Debounce: only emit when IO2 value changes */
+    private var lastIo2Value: Int = -1
+
+    /** Reset debounce state (for testing) */
+    fun resetState() { lastIo2Value = -1 }
 
     /** Parse a logcat line into a PaapEvent, or null if not a recognized line. */
     fun parseLine(line: String): PaapEvent? {
+        IO2_PATTERN.find(line)?.let { match ->
+            val value = match.groupValues[1].toInt()
+            if (value == lastIo2Value) return null
+            lastIo2Value = value
+            return PaapEvent.PushButton(
+                pressed = value == 1,
+                direction = PaapEvent.Direction.OUTBOUND
+            )
+        }
         LINPHONE_STATE_PATTERN.find(line)?.let { match ->
             return PaapEvent.LinphoneCall(
                 fromState = match.groupValues[1].removePrefix("Linphone"),
@@ -61,7 +77,7 @@ object PaapEventParser {
 
         // Key-based events
         if (json.has("heartbeat")) return PaapEvent.Heartbeat(dir)
-        if (json.has("PushButton")) return PaapEvent.PushButton(dir)
+        if (json.has("PushButton")) return PaapEvent.PushButton(pressed = true, direction = dir)
         if (json.has("Vehicle Sensing")) {
             return PaapEvent.VehicleSensing(
                 status = json.optString("Vehicle Sensing", ""),

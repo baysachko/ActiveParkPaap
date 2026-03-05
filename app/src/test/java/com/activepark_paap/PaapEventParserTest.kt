@@ -1,9 +1,15 @@
 package com.activepark_paap
 
 import org.junit.Assert.*
+import org.junit.Before
 import org.junit.Test
 
 class PaapEventParserTest {
+
+    @Before
+    fun setUp() {
+        PaapEventParser.resetState()
+    }
 
     @Test
     fun `linphone state transition`() {
@@ -104,6 +110,31 @@ class PaapEventParserTest {
         val line = "UdpWriterManager: send data = $json"
         val event = PaapEventParser.parseLine(line) as PaapEvent.GateOpen
         assertEquals(PaapEvent.Direction.OUTBOUND, event.direction)
+    }
+
+    @Test
+    fun `IO2 press emits PushButton pressed`() {
+        val line = "E/PRETTY_LOGGER( 1120): │ MainFragment:handleIo2 ioValue = 1"
+        val event = PaapEventParser.parseLine(line) as PaapEvent.PushButton
+        assertTrue(event.pressed)
+    }
+
+    @Test
+    fun `IO2 release emits PushButton released`() {
+        // Force state to pressed first
+        PaapEventParser.parseLine("E/PRETTY_LOGGER( 1120): │ MainFragment:handleIo2 ioValue = 1")
+        val event = PaapEventParser.parseLine("E/PRETTY_LOGGER( 1120): │ MainFragment:handleIo2 ioValue = 0") as PaapEvent.PushButton
+        assertFalse(event.pressed)
+    }
+
+    @Test
+    fun `IO2 debounce suppresses duplicate values`() {
+        // Reset by sending opposite value first
+        PaapEventParser.parseLine("E/PRETTY_LOGGER( 1120): │ MainFragment:handleIo2 ioValue = 0")
+        PaapEventParser.parseLine("E/PRETTY_LOGGER( 1120): │ MainFragment:handleIo2 ioValue = 1")
+        // Same value again should be null
+        val dup = PaapEventParser.parseLine("E/PRETTY_LOGGER( 1120): │ MainFragment:handleIo2 ioValue = 1")
+        assertNull(dup)
     }
 
     @Test

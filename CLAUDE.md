@@ -25,17 +25,13 @@ Sits on top of PAAP (`com.anziot.park`) — the Chinese parking app that handles
 1. Enable adb on box terminal: `su && setprop service.adb.tcp.port 5555 && stop adbd && start adbd`
 2. Connect: `adb connect 192.168.30.25:5555`
 3. Install via Android Studio (device shows as "rockchip") or `adb install`
-4. Grant permissions (once, persists across reboots):
-   ```
-   adb -s 192.168.30.25:5555 shell su -c "pm grant com.activepark_paap android.permission.READ_LOGS"
-   adb -s 192.168.30.25:5555 shell su -c "appops set com.activepark_paap SYSTEM_ALERT_WINDOW allow"
-   ```
+4. Permissions auto-granted on launch via `su` (MainActivity + LogcatReaderService). No manual adb commands needed. Wiped on reinstall but re-granted on next launch.
 
 ## Key Files
 
-- `LogcatReaderService.kt` — background logcat reader via `Runtime.exec("logcat", "-s", "PRETTY_LOGGER:E", "anziot:I", "-T", "1")`. Uses AtomicBoolean to prevent duplicate processes. Drains stderr.
-- `PaapEventParser.kt` — regex extracts JSON from `UdpManager:handleUdpReadData` (inbound) / `UdpWriterManager:send` (outbound), maps to typed events
-- `PaapEvent.kt` — sealed class: GateOpen, Speak, PrintTicket, DisplayUpdate, VehicleSensing, PushButton, Heartbeat, OnlineCheck, LinphoneCall, DebugLog, Unknown
+- `LogcatReaderService.kt` — background logcat reader via `Runtime.exec("logcat", "-s", "PRETTY_LOGGER:E", "anziot:I", "-T", "1")`. Uses AtomicBoolean to prevent duplicate processes. Drains stderr. 1s delay after `grantReadLogs()` before starting logcat process — fixes first-install permission race.
+- `PaapEventParser.kt` — regex extracts JSON from `UdpManager:handleUdpReadData` (inbound) / `UdpWriterManager:send` (outbound), maps to typed events. Also parses GPIO IO2 (`handleIo2 ioValue`) for ticket button press/release with debounce (only emits on value change).
+- `PaapEvent.kt` — sealed class: GateOpen, Speak, PrintTicket, DisplayUpdate, VehicleSensing, PushButton(pressed:Boolean), Heartbeat, OnlineCheck, LinphoneCall, DebugLog, Unknown
 - `OverlayService.kt` — draws UI via WindowManager overlay. Uses `TYPE_APPLICATION_OVERLAY` on API 26+ (emulator), `TYPE_SYSTEM_ALERT` on API 22 (box). Monitors PAAP foreground state via `su -c "dumpsys activity activities"` every 5s — shows red warning banner when PAAP not resumed. Manages page switching via `Page` enum and `showPage()`. Role toggle (entry/exit) is sole authority for page routing — entry mode only shows IDLE/TRANSACTION, exit mode only shows EXIT_IDLE/EXIT_TRANSACTION/COMPLETED_EXIT.
 - `MainActivity.kt` — launcher: starts LogcatReaderService + OverlayService, then finishes. Handles overlay permission prompt on API 23+.
 - `BootReceiver.kt` — `BOOT_COMPLETED` + `ACTION_RESTART` receiver. Starts all 3 services, clears guard pause flag. ADB setup moved to OverlayService.
@@ -50,7 +46,7 @@ Sits on top of PAAP (`com.anziot.park`) — the Chinese parking app that handles
 
 ## UI Screens (Page enum in OverlayService)
 
-All screens share: top bar (logo + clock), accent line, bottom bar (version + network status), QR card. Font: Space Grotesk via `FontHelper.applyFonts()` (tag-based: `android:tag="bold"`).
+All screens share: top bar (logo + clock), accent line, bottom bar (version + network status + hand press indicator), QR card. Font: Space Grotesk via `FontHelper.applyFonts()` (tag-based: `android:tag="bold"`).
 
 - **IDLE** — `EntryIdleView` / `overlay_entry_idle.xml` — "WELCOME" + ActivePark branding. `setMode(isExit=true)` switches to "GOODBYE".
 - **EXIT_IDLE** — reuses `EntryIdleView` with `setMode(isExit=true)` — "GOODBYE" screen.
@@ -65,6 +61,7 @@ Debug access: 6-tap "Connected" text in bottom bar on any screen.
 ## UI Conventions
 
 - Shared font logic: `ui/common/FontHelper.kt` — walks view tree, applies bold/regular based on `android:tag="bold"`
+- `ui/common/OverlayBarHelper.kt` — manages top/bottom bar: clock, network status, phone call indicator, hand press indicator. `setHandPress(pressed)` shows/hides `hand_press_indicator.png` in footer center (IDLE + TRANSACTION pages only).
 - View classes: `ui/entry/` (entry screens), `ui/exit/` (exit screens). Each has `startClock(scope)`, `onDebugRequested` callback, `setNetworkStatus()`.
 - Badge drawable: `bg_type_badge.xml` (red `#8C1B0A`, 8dp corners)
 - Colors: navy `#010062`, accent_red `#8C1B0A`, brand_red `#E84333`, exit yellow `#E8A000`, exit green `#22C55E`
@@ -125,6 +122,8 @@ Frames: `Hdmbk` (Entry Idle), `bMAUt` (Transaction Entry), `bJGHf` (Exit Idle), 
 - **NO shell grep** — `logcat | grep` caused box slowdown/reboot. Use logcat's built-in `-s` tag filtering only.
 - **NO Jetpack Compose** — requires minSdk 23, box is API 22. Use XML views.
 - **PAAP must stay running** — it handles all hardware. Our app is overlay only. PAAP must be in foreground (resumed activity) for hardware to work.
+- **Ticket button**: GPIO IO2 — PAAP logs `MainFragment:handleIo2 ioValue = 1` (press) and `0` (release) at ~30Hz polling. Debounced in `PaapEventParser` to 2 events per press cycle.
+- **Hardware API doc**: `/Users/vodka/Documents/Business/ParkingSystem/TicketboxAndroidDevelopment/md/API_Android_Board.md` (SMDT/TigerWong board API — GPIO, serial, watchdog, display).
 - **UDP timing**: Heartbeat every 10s, OnlineCheck every 60s.
 - **Linphone/SIP**: PAAP embeds linphone 4.5.0 for cashier↔box calls. Logs under `anziot:I` tag. Call state transitions: `CallIdle → CallIncomingReceived → CallConnected → CallStreamsRunning → CallEnd → CallReleased`. Outgoing: `CallIdle → CallOutgoingInit → CallOutgoingProgress → CallOutgoingRinging → CallEnd`.
 - Emulator vs box: emulator needs `TYPE_APPLICATION_OVERLAY` + Settings permission grant. Box needs `TYPE_SYSTEM_ALERT` + `appops set`.

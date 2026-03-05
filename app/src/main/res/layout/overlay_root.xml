@@ -138,6 +138,16 @@
             android:textColor="@color/white_70"
             android:textSize="11sp" />
 
+        <ImageView
+            android:id="@+id/ivHandPress"
+            android:layout_width="wrap_content"
+            android:layout_height="24dp"
+            android:layout_gravity="center"
+            android:src="@drawable/hand_press_indicator"
+            android:scaleType="fitCenter"
+            android:visibility="gone"
+            android:contentDescription="Button pressed" />
+
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

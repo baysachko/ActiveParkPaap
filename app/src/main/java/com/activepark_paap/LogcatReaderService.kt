@@ -38,9 +38,10 @@ class LogcatReaderService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (started.compareAndSet(false, true)) {
-            grantReadLogs()
             eventLog = EventLog.create(File(filesDir, "logs"))
-            startReading()
+            grantReadLogs()
+            // Delay to let READ_LOGS permission propagate to this process
+            android.os.Handler(mainLooper).postDelayed({ startReading() }, 1000)
         }
         return START_STICKY
     }
