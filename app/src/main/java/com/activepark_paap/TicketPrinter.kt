@@ -96,12 +96,15 @@ class TicketPrinter(private val context: Context) {
         val dividerW = 530 * S
         val dividerLeft = (BITMAP_WIDTH - dividerW) / 2f
         val font = ResourcesCompat.getFont(context, R.font.space_grotesk_regular)
+        val fontBold = ResourcesCompat.getFont(context, R.font.space_grotesk_bold)
+        val titleSize = 22 * S
 
         val cx = BITMAP_WIDTH / 2f
         val paint = makePaint(Color.BLACK, textSize, font)
+        val titlePaint = makePaint(Color.BLACK, titleSize, fontBold)
 
         // Measure pass
-        var y = padTop + textSize // title
+        var y = padTop + titleSize // title
         y += gap + 2f            // divider
         y += gap + textSize      // ticket no row
         y += gap + textSize      // entry date row
@@ -119,8 +122,8 @@ class TicketPrinter(private val context: Context) {
         canvas.drawColor(Color.WHITE)
 
         // Render
-        y = padTop + textSize
-        canvas.drawText(title, cx, y, paint)
+        y = padTop + titleSize
+        canvas.drawText(title, cx, y, titlePaint)
         y += gap
         drawDivider(canvas, dividerLeft, dividerW, y)
         y += 2f + gap
