@@ -16,6 +16,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.activepark_paap.ui.common.FontHelper
 import com.activepark_paap.ui.common.OverlayBarHelper
+import com.activepark_paap.ui.common.PaperStatus
 import com.activepark_paap.ui.entry.EntryIdleView
 import com.activepark_paap.ui.entry.EntryTransactionView
 import com.activepark_paap.ui.exit.CompletedExitView
@@ -40,6 +41,8 @@ class OverlayService : Service() {
     private val events = mutableListOf<PaapEvent>()
     private lateinit var adapter: EventAdapter
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private val printThread = newSingleThreadContext("PrinterThread")
+    @Volatile private var printBusy = false
 
     private var idleView: EntryIdleView? = null
     private var exitIdleView: EntryIdleView? = null
@@ -349,6 +352,10 @@ class OverlayService : Service() {
                             tvPrintStatus.text = "OK"
                             tvPrintStatus.setTextColor(Color.parseColor("#22C55E"))
                         }
+                        is TicketPrinter.PrintResult.LowPaper -> {
+                            tvPrintStatus.text = "LOW PAPER"
+                            tvPrintStatus.setTextColor(Color.parseColor("#E8A000"))
+                        }
                         is TicketPrinter.PrintResult.Error -> {
                             tvPrintStatus.text = result.message
                             tvPrintStatus.setTextColor(Color.parseColor("#FF5555"))
@@ -626,6 +633,7 @@ class OverlayService : Service() {
     }
 
     private fun handlePrintTicket(event: PaapEvent.PrintTicket) {
+        Log.e("OverlayService", "handlePrintTicket: ${event.ticketNo}")
         assert(event.ticketNo.isNotEmpty()) { "PrintTicket ticketNo empty" }
         assert(event.qrCode.isNotEmpty()) { "PrintTicket qrCode empty" }
         val enabled = getSharedPreferences("printer_config", MODE_PRIVATE)
@@ -634,16 +642,42 @@ class OverlayService : Service() {
             Log.e("OverlayService", "Custom print disabled, skipping")
             return
         }
-        scope.launch(Dispatchers.IO) {
-            val result = TicketPrinter(this@OverlayService).printTicket(
-                title = event.title,
-                ticketNo = event.ticketNo,
-                entryDate = event.entryDate,
-                footer1 = event.footer1,
-                footer2 = event.footer2,
-                qrUrl = event.qrCode
-            )
-            Log.e("OverlayService", "PrintTicket result: $result")
+        if (printBusy) {
+            Log.e("OverlayService", "Print busy, skipping: ${event.ticketNo}")
+            val role = getSharedPreferences("box_state", MODE_PRIVATE)
+                .getString("role", "entry") ?: "entry"
+            if (role == "entry") barHelper?.setPaperStatus(PaperStatus.NO_PAPER)
+            return
+        }
+        scope.launch(printThread) {
+            printBusy = true
+            try {
+                val result = TicketPrinter(this@OverlayService).printTicket(
+                    title = event.title,
+                    ticketNo = event.ticketNo,
+                    entryDate = event.entryDate,
+                    footer1 = event.footer1,
+                    footer2 = event.footer2,
+                    qrUrl = event.qrCode
+                )
+                Log.e("OverlayService", "PrintTicket result: $result")
+                val role = getSharedPreferences("box_state", MODE_PRIVATE)
+                    .getString("role", "entry") ?: "entry"
+                if (role == "entry") {
+                    val status = when (result) {
+                        is TicketPrinter.PrintResult.Success -> PaperStatus.OK
+                        is TicketPrinter.PrintResult.LowPaper -> PaperStatus.LOW_PAPER
+                        is TicketPrinter.PrintResult.Error -> PaperStatus.ERROR
+                    }
+                    withContext(Dispatchers.Main) {
+                        barHelper?.setPaperStatus(status)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("OverlayService", "PrintTicket exception: ${e.message}")
+            } finally {
+                printBusy = false
+            }
         }
     }
 
@@ -847,6 +881,7 @@ class OverlayService : Service() {
         countdownJob?.cancel()
         gateTimeoutJob?.cancel()
         scope.cancel()
+        printThread.close()
         if (rootView != null) {
             windowManager?.removeView(rootView)
             rootView = null

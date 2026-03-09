@@ -62,7 +62,7 @@ Debug access: 6-tap "Connected" text in bottom bar on any screen.
 ## UI Conventions
 
 - Shared font logic: `ui/common/FontHelper.kt` — walks view tree, applies bold/regular based on `android:tag="bold"`
-- `ui/common/OverlayBarHelper.kt` — manages top/bottom bar: clock, network status, phone call indicator, hand press indicator. `setHandPress(pressed)` shows/hides `hand_press_indicator.png` in footer center (IDLE + TRANSACTION pages only).
+- `ui/common/OverlayBarHelper.kt` — manages top/bottom bar: clock, network status, phone call indicator, hand press indicator, paper status indicator. `setHandPress(pressed)` shows/hides `hand_press_indicator.png` in footer center (IDLE + TRANSACTION pages only). `setPaperStatus(PaperStatus)` shows/hides paper status icon centered in top bar (entry-only).
 - View classes: `ui/entry/` (entry screens), `ui/exit/` (exit screens). Each has `startClock(scope)`, `onDebugRequested` callback, `setNetworkStatus()`.
 - Badge drawable: `bg_type_badge.xml` (red `#8C1B0A`, 8dp corners)
 - Colors: navy `#010062`, accent_red `#8C1B0A`, brand_red `#E84333`, exit yellow `#E8A000`, exit green `#22C55E`
@@ -126,14 +126,18 @@ Frames: `Hdmbk` (Entry Idle), `bMAUt` (Transaction Entry), `bJGHf` (Exit Idle), 
 - **Library**: `autoreplyprint.aar` in `app/libs/` — JNA-based ESC/POS SDK from Caysn. Contains `libautoreplyprint.so` + `libjnidispatch.so` for armeabi-v7a/arm64-v8a/x86.
 - **Printer**: "KC PRINT PORT" USB thermal printer, VID=0x0FE6, PID=0x811E, on USB bus 005. Driver: `usblp`. No `/dev/usblp0` node — accessed via Android USB Host API.
 - **`TicketPrinter.kt`**: `printTicket(title, ticketNo, entryDate, footer1, footer2, qrUrl)` — opens USB printer via `AutoReplyPrint.INSTANCE.CP_Port_OpenUsb("VID:0x0FE6,PID:0x811E", 0)`. Renders ticket as `Bitmap` on `Canvas` with all dynamic fields, prints via `CP_Pos_PrintRasterImageFromData_Helper.PrintRasterImageFromBitmap()`, then `CP_Pos_FeedAndHalfCutPaper()`. Full custom layout (Space Grotesk 18pt, QR, dividers).
-- **Status check**: `CP_Pos_QueryRTStatus(handle, 30000)` — checks OFFLINE, COVER_UP, NO_PAPER, ERROR, CUTTER via `CP_RTSTATUS_Helper`. Status values are `Long`.
+- **Paper status indicator**: `ivPaperStatus` ImageView centered in top bar (`overlay_root.xml`), 36dp, GONE by default. Entry-only (exit boxes have no dispenser). `PaperStatus` enum in `OverlayBarHelper.kt`: OK (hidden), LOW_PAPER (`low_paper_indicator.png`), NO_PAPER (`no_paper_indicator.png`), ERROR (`error_indicator.png`).
+- **Post-print status check**: `checkPaperStatus()` calls `CP_Pos_QueryRTStatus(handle, 30000)` ONLY after `PrintBitmap=true` (paper present = safe). Checks `CP_RTSTATUS_PAPER_NEAREND` only — returns `LowPaper` or `Success`. NEVER called standalone or on startup (SIGSEGV risk when paper empty). Status values are `Long` (Int→toLong conversion needed).
+- **Print result → indicator**: `Success` → clear, `LowPaper` → low paper icon, `Error` → error icon. `printBusy` skip → NO_PAPER icon (busy = previous print hung on empty dispenser, JNA blocked). Clears automatically on next successful print after refill.
+- **PrintResult sealed class**: `Success`, `LowPaper`, `Error(message)`. `PrintBitmap=false` → Error. `openDevice()=null` → Error (JNA returns Java null, not Pointer.NULL).
 - **Debug UI**: "Printer:" row with CardNo input + "Print" button + ON/OFF toggle + status text. Wired in `OverlayService.setupDebugView()`.
 - **Tested & working**: Port opens, bitmap renders (550xN), prints successfully, port closes. No sleep needed before close — printer buffers data internally.
 - **PAAP conflict**: With "Enable New Print" ON, PAAP doesn't hold the USB printer, so no conflict.
 - **Entry flow with custom print**: PushButton → parking system creates record + gate opens + TTS (no print) → our app detects PrintTicket in logcat → sends own print via USB. CardNo from QR URL or Display text1 field.
 - **Reference source**: PAAP's printer code in `/Users/vodka/Documents/Business/ParkingSystem/TicketboxAndroidDevelopment/paapsmtTest/paapsmtTest/app/src/main/java/com/sztigerwong/paap/ui/MainActivity.java` — uses same AutoReplyPrint library, renders bitmap on Canvas, prints as raster image.
 - **Content field format**: `;`-separated — `[0]=footer1, [1]=footer2, [2]=entryDate, [3]=cardNo, [4]=scanLabel(unused)`. Parsed in `PrintTicket` data class via `contentParts`.
-- **Auto-print wired**: `OverlayService.collectEvents()` catches `PrintTicket` → `handlePrintTicket()` → `TicketPrinter.printTicket()` on IO dispatcher with all dynamic fields from PAAP.
+- **Auto-print wired**: `OverlayService.collectEvents()` catches `PrintTicket` → `handlePrintTicket()` → `TicketPrinter.printTicket()` on dedicated `PrinterThread` (single-thread context) with all dynamic fields from PAAP. `printBusy` flag prevents concurrent USB access.
+- **Print busy skip**: When `printBusy=true`, print is skipped but PAAP still creates parking record, opens gate, TTS, display — all normal. Only the physical ticket doesn't print. Busy state = previous JNA call hung (empty dispenser). Shows NO_PAPER indicator.
 - **Print toggle**: SharedPreferences `"printer_config"."enabled"` (default `true`). ON/OFF button in debug UI Printer row. When OFF, `handlePrintTicket()` skips — PAAP prints natively.
 
 ## Hardware API Docs

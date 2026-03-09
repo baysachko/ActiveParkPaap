@@ -44,6 +44,15 @@
                 android:textSize="24sp" />
         </LinearLayout>
 
+        <ImageView
+            android:id="@+id/ivPaperStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:layout_gravity="center"
+            android:scaleType="fitCenter"
+            android:visibility="gone"
+            android:contentDescription="Paper status" />
+
         <TextView
             android:id="@+id/tvTime"
             android:layout_width="wrap_content"

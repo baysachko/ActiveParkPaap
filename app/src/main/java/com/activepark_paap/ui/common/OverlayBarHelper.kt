@@ -11,6 +11,8 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
+enum class PaperStatus { OK, LOW_PAPER, NO_PAPER, ERROR }
+
 class OverlayBarHelper(private val root: View) {
 
     private val tvTime: TextView = root.findViewById(R.id.tvTime)
@@ -18,6 +20,7 @@ class OverlayBarHelper(private val root: View) {
     private val tvNetStatus: TextView = root.findViewById(R.id.tvNetStatus)
     private val phoneIndicator: View = root.findViewById(R.id.phoneIndicator)
     private val ivHandPress: ImageView = root.findViewById(R.id.ivHandPress)
+    private val ivPaperStatus: ImageView = root.findViewById(R.id.ivPaperStatus)
 
     private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
     private val dateFormat = SimpleDateFormat("EEEE, dd MMM yyyy", Locale.ENGLISH)
@@ -66,5 +69,23 @@ class OverlayBarHelper(private val root: View) {
 
     fun setHandPress(pressed: Boolean) {
         ivHandPress.visibility = if (pressed) View.VISIBLE else View.GONE
+    }
+
+    fun setPaperStatus(status: PaperStatus) {
+        when (status) {
+            PaperStatus.OK -> ivPaperStatus.visibility = View.GONE
+            PaperStatus.LOW_PAPER -> {
+                ivPaperStatus.setImageResource(R.drawable.low_paper_indicator)
+                ivPaperStatus.visibility = View.VISIBLE
+            }
+            PaperStatus.NO_PAPER -> {
+                ivPaperStatus.setImageResource(R.drawable.no_paper_indicator)
+                ivPaperStatus.visibility = View.VISIBLE
+            }
+            PaperStatus.ERROR -> {
+                ivPaperStatus.setImageResource(R.drawable.error_indicator)
+                ivPaperStatus.visibility = View.VISIBLE
+            }
+        }
     }
 }

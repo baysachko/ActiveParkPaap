@@ -28,12 +28,12 @@ class TicketPrinter(private val context: Context) {
         private const val PRINTER_VID = 0x0FE6
         private const val PRINTER_PID = 0x811E
         private const val BITMAP_WIDTH = 550
-        private const val STATUS_TIMEOUT_MS = 5000
         private const val GREY = 0xFF666666.toInt()
         private const val DIVIDER_COLOR = 0xFFCCCCCC.toInt()
         private const val CREDIT_GREY = 0xFF999999.toInt()
     }
 
+    @Synchronized
     fun printTicket(
         title: String,
         ticketNo: String,
@@ -48,27 +48,25 @@ class TicketPrinter(private val context: Context) {
         val usbDevice = findPrinterDevice() ?: return PrintResult.Error("Printer not found")
         if (!hasUsbPermission(usbDevice)) return PrintResult.Error("No USB permission")
 
-        val handle = openDevice(usbDevice)
+        val handle = openDevice(usbDevice) ?: return PrintResult.Error("Failed to open printer")
         if (handle == Pointer.NULL) return PrintResult.Error("Failed to open printer")
 
         try {
-            val statusOk = checkStatus(handle)
-            if (!statusOk) {
-                AutoReplyPrint.INSTANCE.CP_Port_Close(handle)
-                return PrintResult.Error("Printer error — check paper/cover")
-            }
-
             val bitmap = renderTicketBitmap(title, ticketNo, entryDate, footer1, footer2, qrUrl)
-            AutoReplyPrint.INSTANCE.CP_Pos_SetAlignment(handle, 1) // center
-            AutoReplyPrint.CP_Pos_PrintRasterImageFromData_Helper
+            AutoReplyPrint.INSTANCE.CP_Pos_SetAlignment(handle, 1)
+            val printed = AutoReplyPrint.CP_Pos_PrintRasterImageFromData_Helper
                 .PrintRasterImageFromBitmap(
                     handle, bitmap.width, bitmap.height, bitmap,
                     AutoReplyPrint.CP_ImageBinarizationMethod_Thresholding,
                     AutoReplyPrint.CP_ImageCompressionMethod_None
                 )
+            if (!printed) {
+                Log.e(TAG, "PrintBitmap=false: $ticketNo")
+                return PrintResult.Error("Print failed")
+            }
             AutoReplyPrint.INSTANCE.CP_Pos_FeedAndHalfCutPaper(handle)
             Log.e(TAG, "Printed: $ticketNo")
-            return PrintResult.Success
+            return checkPaperStatus(handle)
         } finally {
             AutoReplyPrint.INSTANCE.CP_Port_Close(handle)
         }
@@ -205,31 +203,34 @@ class TicketPrinter(private val context: Context) {
         return usbManager.hasPermission(device)
     }
 
-    private fun openDevice(device: UsbDevice): Pointer {
-        val usbPort = String.format("VID:0x%04X,PID:0x%04X", device.vendorId, device.productId)
-        val handle = AutoReplyPrint.INSTANCE.CP_Port_OpenUsb(usbPort, 0)
-        Log.e(TAG, if (handle == Pointer.NULL) "OpenPort Failed" else "OpenPort Success")
-        return handle
+    /** Only safe AFTER PrintBitmap=true (paper present). Checks PAPER_NEAREND only. */
+    private fun checkPaperStatus(handle: Pointer): PrintResult {
+        assert(handle != Pointer.NULL) { "checkPaperStatus called with NULL handle" }
+        return try {
+            val status = AutoReplyPrint.INSTANCE.CP_Pos_QueryRTStatus(handle, 30000).toLong()
+            val nearEnd = AutoReplyPrint.CP_RTSTATUS_Helper.CP_RTSTATUS_PAPER_NEAREND(status)
+            if (nearEnd) {
+                Log.e(TAG, "Paper near end detected")
+                PrintResult.LowPaper
+            } else {
+                PrintResult.Success
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "checkPaperStatus failed: ${e.message}")
+            PrintResult.Success // Paper was present (PrintBitmap=true), safe fallback
+        }
     }
 
-    private fun checkStatus(handle: Pointer): Boolean {
-        val status = AutoReplyPrint.INSTANCE.CP_Pos_QueryRTStatus(handle, 30000)
-        val s = status.toLong()
-        val errors = mutableListOf<String>()
-        if (AutoReplyPrint.CP_RTSTATUS_Helper.CP_RTSTATUS_OFFLINE(s)) errors += "OFFLINE"
-        if (AutoReplyPrint.CP_RTSTATUS_Helper.CP_RTSTATUS_COVERUP(s)) errors += "COVER_UP"
-        if (AutoReplyPrint.CP_RTSTATUS_Helper.CP_RTSTATUS_NOPAPER(s)) errors += "NO_PAPER"
-        if (AutoReplyPrint.CP_RTSTATUS_Helper.CP_RTSTATUS_ERROR_OCCURED(s)) errors += "ERROR"
-        if (AutoReplyPrint.CP_RTSTATUS_Helper.CP_RTSTATUS_CUTTER_ERROR(s)) errors += "CUTTER"
-        if (errors.isNotEmpty()) {
-            Log.e(TAG, "Printer errors: $errors")
-            return false
-        }
-        return true
+    private fun openDevice(device: UsbDevice): Pointer? {
+        val usbPort = String.format("VID:0x%04X,PID:0x%04X", device.vendorId, device.productId)
+        val handle = AutoReplyPrint.INSTANCE.CP_Port_OpenUsb(usbPort, 0)
+        Log.e(TAG, if (handle == null || handle == Pointer.NULL) "OpenPort Failed" else "OpenPort Success")
+        return handle
     }
 
     sealed class PrintResult {
         object Success : PrintResult()
+        object LowPaper : PrintResult()
         data class Error(val message: String) : PrintResult()
     }
 }
