@@ -308,4 +308,50 @@ class PaymentManagerTest {
         // State stays at AwaitingPayment (no further transitions after destroy)
         assertTrue(manager.state.value is PaymentState.AwaitingPayment)
     }
+
+    // --- cached currency ---
+
+    @Test
+    fun rescan409_usesCachedCurrencyFromFirstInitiate() = testScope.runTest {
+        // First initiate returns currency
+        successInitiate(tranId = "txn1")
+        pendingPoll()
+        manager.startPayment("CARD1")
+        advanceTimeBy(1)
+        assertEquals("USD", (manager.state.value as PaymentState.AwaitingPayment).currency)
+
+        // Simulate 409 rescan: same card, no currency
+        initiateResult = ApiResult.Success(
+            InitiateResponse("txn1b", "base64data", "", "", 0L, 500L)
+        )
+        manager.startPayment("CARD1")
+        advanceTimeBy(1)
+
+        val state = manager.state.value as PaymentState.AwaitingPayment
+        assertEquals("USD", state.currency)
+        manager.destroy()
+    }
+
+    @Test
+    fun destroy_clearsCachedCurrency() = testScope.runTest {
+        // First initiate caches currency
+        successInitiate(tranId = "txn1")
+        pendingPoll()
+        manager.startPayment("CARD1")
+        advanceTimeBy(1)
+        assertEquals("USD", (manager.state.value as PaymentState.AwaitingPayment).currency)
+
+        manager.destroy()
+
+        // New payment with no currency — should be empty, not cached "USD"
+        initiateResult = ApiResult.Success(
+            InitiateResponse("txn2", "base64data", "", "", 0L, 500L)
+        )
+        manager.startPayment("CARD2")
+        advanceTimeBy(1)
+
+        val state = manager.state.value as PaymentState.AwaitingPayment
+        assertEquals("", state.currency)
+        manager.destroy()
+    }
 }

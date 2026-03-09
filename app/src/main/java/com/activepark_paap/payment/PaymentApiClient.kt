@@ -92,17 +92,20 @@ open class PaymentApiClient(
     }
 
     private fun <T> parseConflictAsSuccess(json: JSONObject, parse: (JSONObject) -> T): ApiResult<T> {
-        val qrImage = json.optString("QrImage", "")
+        val qrImage = safeString(json, "QrImage")
         if (qrImage.isEmpty()) {
             return ApiResult.HttpError(409, "PAYMENT_IN_PROGRESS_NO_QR", "Cached QR unavailable")
         }
+        val expiresIn = safeLong(json, "ExpiresIn")
+        val retryAfter = safeLong(json, "RetryAfterSeconds")
+        val effectiveExpiresIn = if (expiresIn > 0) expiresIn else retryAfter
         val mapped = JSONObject()
-            .put("TranId", json.optString("ExistingTranId", ""))
+            .put("TranId", safeString(json, "ExistingTranId"))
             .put("QrImage", qrImage)
-            .put("Amount", json.optString("Amount", ""))
-            .put("Currency", json.optString("Currency", ""))
-            .put("ExpiresAt", json.optLong("ExpiresAt", 0))
-            .put("ExpiresIn", json.optLong("ExpiresIn", 0))
+            .put("Amount", safeString(json, "Amount"))
+            .put("Currency", safeString(json, "Currency"))
+            .put("ExpiresAt", safeLong(json, "ExpiresAt"))
+            .put("ExpiresIn", effectiveExpiresIn)
         return ApiResult.Success(parse(mapped))
     }
 
@@ -117,32 +120,45 @@ open class PaymentApiClient(
     companion object {
         private val JSON_TYPE = MediaType.parse("application/json; charset=utf-8")
 
+        /** API 22 optString returns literal "null" for JSON null — normalize to "" */
+        fun safeString(json: JSONObject, key: String): String {
+            if (json.isNull(key)) return ""
+            val value = json.optString(key, "")
+            return if (value == "null") "" else value
+        }
+
+        /** API 22 optLong returns 0 for JSON null — explicit null check */
+        fun safeLong(json: JSONObject, key: String): Long {
+            if (json.isNull(key)) return 0L
+            return json.optLong(key, 0)
+        }
+
         fun buildDefaultClient(): OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .build()
 
         fun parseInitiateResponse(json: JSONObject): InitiateResponse {
-            val tranId = json.optString("TranId", "")
+            val tranId = safeString(json, "TranId")
             assert(tranId.isNotEmpty()) { "TranId missing from response" }
             return InitiateResponse(
                 tranId = tranId,
-                qrImageBase64 = json.optString("QrImage", ""),
-                amount = json.optString("Amount", ""),
-                currency = json.optString("Currency", ""),
-                expiresAtUnix = json.optLong("ExpiresAt", 0),
-                expiresInSeconds = json.optLong("ExpiresIn", 0)
+                qrImageBase64 = safeString(json, "QrImage"),
+                amount = safeString(json, "Amount"),
+                currency = safeString(json, "Currency"),
+                expiresAtUnix = safeLong(json, "ExpiresAt"),
+                expiresInSeconds = safeLong(json, "ExpiresIn")
             )
         }
 
         fun parseStatusResponse(json: JSONObject): StatusResponse {
-            val tranId = json.optString("TranId", "")
+            val tranId = safeString(json, "TranId")
             assert(tranId.isNotEmpty()) { "TranId missing from response" }
             return StatusResponse(
-                status = json.optString("Status", ""),
+                status = safeString(json, "Status"),
                 tranId = tranId,
-                amount = json.optString("Amount", ""),
-                currency = json.optString("Currency", "")
+                amount = safeString(json, "Amount"),
+                currency = safeString(json, "Currency")
             )
         }
     }

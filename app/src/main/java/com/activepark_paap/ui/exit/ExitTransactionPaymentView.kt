@@ -63,6 +63,7 @@ class ExitTransactionPaymentView(context: Context) {
     }
 
     fun setQrBitmap(bitmap: Bitmap) {
+        hideAllIcons()
         ivQrPayment.setImageBitmap(bitmap)
         ivQrPayment.visibility = View.VISIBLE
     }

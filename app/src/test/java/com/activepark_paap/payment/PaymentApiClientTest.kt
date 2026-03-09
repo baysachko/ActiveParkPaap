@@ -250,4 +250,83 @@ class PaymentApiClientTest {
         val reqBody = JSONObject(req.body.readUtf8())
         assertEquals("ABC123", reqBody.getString("CardNo"))
     }
+
+    // --- safeString / safeLong ---
+
+    @Test
+    fun safeString_returnsEmptyForJsonNull() {
+        val json = JSONObject("""{"Currency": null}""")
+        assertEquals("", PaymentApiClient.safeString(json, "Currency"))
+    }
+
+    @Test
+    fun safeString_returnsEmptyForMissingKey() {
+        val json = JSONObject("{}")
+        assertEquals("", PaymentApiClient.safeString(json, "Currency"))
+    }
+
+    @Test
+    fun safeString_returnsValueForNonNull() {
+        val json = JSONObject("""{"Currency": "KHR"}""")
+        assertEquals("KHR", PaymentApiClient.safeString(json, "Currency"))
+    }
+
+    @Test
+    fun safeLong_returnsZeroForJsonNull() {
+        val json = JSONObject("""{"ExpiresIn": null}""")
+        assertEquals(0L, PaymentApiClient.safeLong(json, "ExpiresIn"))
+    }
+
+    @Test
+    fun safeLong_returnsZeroForMissingKey() {
+        val json = JSONObject("{}")
+        assertEquals(0L, PaymentApiClient.safeLong(json, "ExpiresIn"))
+    }
+
+    @Test
+    fun safeLong_returnsValueForNonNull() {
+        val json = JSONObject("""{"ExpiresIn": 600}""")
+        assertEquals(600L, PaymentApiClient.safeLong(json, "ExpiresIn"))
+    }
+
+    // --- 409 with null fields + RetryAfterSeconds fallback ---
+
+    @Test
+    fun initiate_409_nullFieldsWithRetryAfter_usesRetryAfterSeconds() = runBlocking {
+        val body = JSONObject()
+            .put("Success", false)
+            .put("Error", "PAYMENT_IN_PROGRESS")
+            .put("ExistingTranId", "old789")
+            .put("QrImage", "data:image/png;base64,cached")
+            .put("Amount", JSONObject.NULL)
+            .put("Currency", JSONObject.NULL)
+            .put("ExpiresIn", JSONObject.NULL)
+            .put("ExpiresAt", 1773028318L)
+            .put("RetryAfterSeconds", 282L)
+        server.enqueue(MockResponse().setResponseCode(409).setBody(body.toString()))
+
+        val result = client.initiate("CARD001")
+
+        assertTrue(result is ApiResult.Success)
+        val data = (result as ApiResult.Success).data
+        assertEquals("old789", data.tranId)
+        assertEquals("", data.currency)
+        assertEquals("", data.amount)
+        assertEquals(282L, data.expiresInSeconds)
+    }
+
+    @Test
+    fun initiate_409_expiresInPresent_ignoresRetryAfter() = runBlocking {
+        val body = JSONObject()
+            .put("ExistingTranId", "old999")
+            .put("QrImage", "data:image/png;base64,qr")
+            .put("ExpiresIn", 500L)
+            .put("RetryAfterSeconds", 282L)
+        server.enqueue(MockResponse().setResponseCode(409).setBody(body.toString()))
+
+        val result = client.initiate("CARD001")
+
+        assertTrue(result is ApiResult.Success)
+        assertEquals(500L, (result as ApiResult.Success).data.expiresInSeconds)
+    }
 }

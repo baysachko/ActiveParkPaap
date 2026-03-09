@@ -24,6 +24,7 @@ class PaymentManager(
 
     private var paymentJob: Job? = null
     private var currentCardNo: String? = null
+    private var cachedCurrency: String = ""
     private var lastExitPage: Page? = null
 
     init {
@@ -75,6 +76,7 @@ class PaymentManager(
         paymentJob?.cancel()
         paymentJob = null
         currentCardNo = null
+        cachedCurrency = ""
         lastExitPage = null
     }
 
@@ -96,8 +98,10 @@ class PaymentManager(
             _state.value = PaymentState.Error("Failed to decode QR code")
             return
         }
+        if (data.currency.isNotEmpty()) cachedCurrency = data.currency
+        val currency = if (data.currency.isNotEmpty()) data.currency else cachedCurrency
         val localExpiresAt = clock() + data.expiresInSeconds
-        _state.value = PaymentState.AwaitingPayment(data.tranId, bitmap, localExpiresAt, data.currency)
+        _state.value = PaymentState.AwaitingPayment(data.tranId, bitmap, localExpiresAt, currency)
         pollUntilResolved(data.tranId, localExpiresAt)
     }
 

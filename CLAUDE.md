@@ -113,10 +113,11 @@ Frames: `Hdmbk` (Entry Idle), `bMAUt` (Transaction Entry), `bJGHf` (Exit Idle), 
 - **Gate timeout**: 20s after Confirmed, if no PAAP gate-open → warning icon + "Payment confirmed, gate not responding." + "Please contact parking staff."
 - **Cancel**: EXIT_IDLE reappears without COMPLETED_EXIT → auto-cancel via API
 - **Timer**: uses `ExpiresIn` (relative seconds) from API to compute local expiry — avoids server/box clock mismatch
-- **Currency**: API returns `Currency` field, shown as prefix on pay amount in exit transaction payment view
-- **409 handling**: existing transaction — returns cached QR + ExistingTranId + ExpiresAt + ExpiresIn from Redis
+- **Currency**: API returns `Currency` field, shown as prefix on pay amount. `PaymentManager` caches currency from first initiate (200), reuses on 409 rescan (where Currency is null). Cleared on `destroy()`.
+- **409 handling**: existing transaction — returns cached QR + ExistingTranId + ExpiresAt + RetryAfterSeconds. `Amount`, `Currency`, `ExpiresIn` are JSON null. `parseConflictAsSuccess` falls back `ExpiresIn` → `RetryAfterSeconds` (relative, avoids clock mismatch).
+- **JSON null safety**: API 22 `optString` returns literal `"null"` for JSON null. `safeString()`/`safeLong()` in `PaymentApiClient.Companion` normalize to `""`/`0L`. Used in all response parsing.
 - **Dependencies**: OkHttp3 `3.12.13` (last Java 7 compatible), coroutines-test, mockito-core
-- **Tests**: PaymentConfigTest (6), PaymentApiClientTest (16), PaymentManagerTest (17) — all pure logic, no Robolectric
+- **Tests**: PaymentConfigTest (6), PaymentApiClientTest (24), PaymentManagerTest (19) — all pure logic, no Robolectric
 
 ## Custom Ticket Printing (Direct USB Printer)
 
