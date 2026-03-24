@@ -4,6 +4,7 @@ import android.content.Context
 import android.view.LayoutInflater
 import android.view.View
 import android.widget.TextView
+import android.util.Log
 import com.activepark_paap.R
 import com.activepark_paap.ui.common.FontHelper
 
@@ -22,7 +23,7 @@ class EntryTransactionView(context: Context) {
     }
 
     fun setPlate(text: String) {
-        assert(text.isNotEmpty()) { "plate text empty" }
+        if (text.isEmpty()) { Log.e("EntryTransactionView", "plate text empty"); return }
         tvPlate.text = text
         tvPlate.post {
             val parent = tvPlate.parent as View
@@ -32,17 +33,17 @@ class EntryTransactionView(context: Context) {
     }
 
     fun setTypeBadge(text: String) {
-        assert(text.isNotEmpty()) { "badge text empty" }
+        if (text.isEmpty()) { Log.e("EntryTransactionView", "badge text empty"); return }
         tvTypeBadge.text = text
     }
 
     fun setEntryDate(text: String) {
-        assert(text.isNotEmpty()) { "entry date empty" }
+        if (text.isEmpty()) { Log.e("EntryTransactionView", "entry date empty"); return }
         tvEntryDate.text = text
     }
 
     fun setStatusLabel(text: String, color: Int) {
-        assert(text.isNotEmpty()) { "status label empty" }
+        if (text.isEmpty()) { Log.e("EntryTransactionView", "status label empty"); return }
         tvStatusLabel.text = text
         tvStatusLabel.setTextColor(color)
     }

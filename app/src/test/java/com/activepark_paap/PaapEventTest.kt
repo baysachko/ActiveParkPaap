@@ -53,6 +53,24 @@ class PaapEventTest {
     }
 
     @Test
+    fun `PrintTicket semicolons only → all empty parts`() {
+        val e = PaapEvent.PrintTicket("T", ";;;", "QR", PaapEvent.Direction.INBOUND)
+        assertEquals("", e.footer1)
+        assertEquals("", e.footer2)
+        assertEquals("", e.entryDate)
+        assertEquals("", e.ticketNo)
+    }
+
+    @Test
+    fun `PrintTicket trailing semicolons`() {
+        val e = PaapEvent.PrintTicket("T", "f1;f2;date;ticket;", "QR", PaapEvent.Direction.INBOUND)
+        assertEquals("f1", e.footer1)
+        assertEquals("f2", e.footer2)
+        assertEquals("date", e.entryDate)
+        assertEquals("ticket", e.ticketNo)
+    }
+
+    @Test
     fun `DisplayUpdate summary`() {
         val e = PaapEvent.DisplayUpdate(
             mapOf("text1" to PaapEvent.DisplayField("Hi", "#FFF", 30, "CENTER")),

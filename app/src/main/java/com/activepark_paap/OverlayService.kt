@@ -22,6 +22,12 @@ import com.activepark_paap.ui.entry.EntryTransactionView
 import com.activepark_paap.ui.exit.CompletedExitView
 import com.activepark_paap.ui.exit.ExitTransactionView
 import com.activepark_paap.ui.exit.ExitTransactionPaymentView
+import com.activepark_paap.ui.entry.CashEntryView
+import com.activepark_paap.ui.entry.CashEntryDenyView
+import com.activepark_paap.ui.entry.ExpiredEntryDenyView
+import com.activepark_paap.ui.exit.CashExitView
+import com.activepark_paap.ui.exit.CashExitDenyView
+import com.activepark_paap.ui.exit.ExpiredExitDenyView
 import com.activepark_paap.payment.PaymentApiClient
 import com.activepark_paap.payment.PaymentConfig
 import com.activepark_paap.payment.PaymentManager
@@ -50,6 +56,12 @@ class OverlayService : Service() {
     private var exitTransactionView: ExitTransactionView? = null
     private var exitTransactionPaymentView: ExitTransactionPaymentView? = null
     private var completedExitView: CompletedExitView? = null
+    private var cashEntryView: CashEntryView? = null
+    private var cashEntryDenyView: CashEntryDenyView? = null
+    private var cashExitView: CashExitView? = null
+    private var cashExitDenyView: CashExitDenyView? = null
+    private var expiredEntryDenyView: ExpiredEntryDenyView? = null
+    private var expiredExitDenyView: ExpiredExitDenyView? = null
     private var debugView: View? = null
     private var currentPage = Page.IDLE
     private var pendingPage: Page? = null
@@ -112,6 +124,7 @@ class OverlayService : Service() {
         setupExitTransactionView()
         setupExitTransactionPaymentView()
         setupCompletedExitView()
+        setupCashViews()
         setupDebugView()
         showPage(Page.IDLE)
 
@@ -147,6 +160,15 @@ class OverlayService : Service() {
 
     private fun setupCompletedExitView() {
         completedExitView = CompletedExitView(this)
+    }
+
+    private fun setupCashViews() {
+        cashEntryView = CashEntryView(this)
+        cashEntryDenyView = CashEntryDenyView(this)
+        cashExitView = CashExitView(this)
+        cashExitDenyView = CashExitDenyView(this)
+        expiredEntryDenyView = ExpiredEntryDenyView(this)
+        expiredExitDenyView = ExpiredExitDenyView(this)
     }
 
     private fun setupDebugView() {
@@ -381,6 +403,44 @@ class OverlayService : Service() {
             showPage(Page.EXIT_IDLE)
         }
 
+        debugView!!.findViewById<Button>(R.id.btnCashEntry).setOnClickListener {
+            cashEntryView!!.setPlate("CB12345")
+            cashEntryView!!.setTypeBadge("CASH")
+            cashEntryView!!.setBalance("10000")
+            showPage(Page.CASH_ENTRY)
+        }
+        debugView!!.findViewById<Button>(R.id.btnCashEntryDeny).setOnClickListener {
+            cashEntryDenyView!!.setPlate("CB12345")
+            cashEntryDenyView!!.setTypeBadge("CASH")
+            cashEntryDenyView!!.setBalance("0")
+            showPage(Page.CASH_ENTRY_DENY)
+        }
+        debugView!!.findViewById<Button>(R.id.btnCashExit).setOnClickListener {
+            cashExitView!!.setPlate("CB12345")
+            cashExitView!!.setTypeBadge("CASH")
+            cashExitView!!.setBalance("9800")
+            showPage(Page.CASH_EXIT)
+        }
+        debugView!!.findViewById<Button>(R.id.btnCashExitDeny).setOnClickListener {
+            cashExitDenyView!!.setPlate("CB12345")
+            cashExitDenyView!!.setTypeBadge("CASH")
+            cashExitDenyView!!.setBalance("50")
+            showPage(Page.CASH_EXIT_DENY)
+        }
+
+        debugView!!.findViewById<Button>(R.id.btnExpiredEntry).setOnClickListener {
+            expiredEntryDenyView!!.setPlate("CB12345")
+            expiredEntryDenyView!!.setTypeBadge("Vehicle No. is Expiry.")
+            expiredEntryDenyView!!.setValidDate("04/23/2025")
+            showPage(Page.EXPIRED_ENTRY_DENY)
+        }
+        debugView!!.findViewById<Button>(R.id.btnExpiredExit).setOnClickListener {
+            expiredExitDenyView!!.setPlate("CB12345")
+            expiredExitDenyView!!.setTypeBadge("Vehicle No. is Expiry.")
+            expiredExitDenyView!!.setValidDate("04/23/2025")
+            showPage(Page.EXPIRED_EXIT_DENY)
+        }
+
         debugView!!.findViewById<Button>(R.id.btnPageExitTxn).setOnClickListener {
             if (PaymentConfig.load(this).enabled) {
                 exitTransactionPaymentView!!.clearPayment()
@@ -541,6 +601,12 @@ class OverlayService : Service() {
                 assert(completedExitView != null) { "completedExitView null" }
                 completedExitView!!.view
             }
+            Page.CASH_ENTRY -> cashEntryView!!.view
+            Page.CASH_ENTRY_DENY -> cashEntryDenyView!!.view
+            Page.CASH_EXIT -> cashExitView!!.view
+            Page.CASH_EXIT_DENY -> cashExitDenyView!!.view
+            Page.EXPIRED_ENTRY_DENY -> expiredEntryDenyView!!.view
+            Page.EXPIRED_EXIT_DENY -> expiredExitDenyView!!.view
             Page.DEBUG -> throw IllegalStateException("handled above")
         }
 
@@ -614,6 +680,7 @@ class OverlayService : Service() {
                 if (event is PaapEvent.DisplayUpdate) handleDisplayUpdate(event)
                 if (event is PaapEvent.PushButton) {
                     val showOn = currentPage == Page.IDLE || currentPage == Page.TRANSACTION
+                        || currentPage == Page.CASH_ENTRY || currentPage == Page.CASH_ENTRY_DENY
                     barHelper?.setHandPress(event.pressed && showOn)
                 }
                 if (event is PaapEvent.LinphoneCall) {
@@ -634,8 +701,10 @@ class OverlayService : Service() {
 
     private fun handlePrintTicket(event: PaapEvent.PrintTicket) {
         Log.e("OverlayService", "handlePrintTicket: ${event.ticketNo}")
-        assert(event.ticketNo.isNotEmpty()) { "PrintTicket ticketNo empty" }
-        assert(event.qrCode.isNotEmpty()) { "PrintTicket qrCode empty" }
+        if (event.ticketNo.isEmpty() || event.qrCode.isEmpty()) {
+            Log.e("OverlayService", "PrintTicket missing fields: ticketNo='${event.ticketNo}' qrCode='${event.qrCode}'")
+            return
+        }
         val enabled = getSharedPreferences("printer_config", MODE_PRIVATE)
             .getBoolean("enabled", true)
         if (!enabled) {
@@ -719,7 +788,10 @@ class OverlayService : Service() {
                 exitTransactionPaymentView!!.setPayAmount(amount)
                 exitTransactionPaymentView!!.setStatusLabel("EXITING", statusColor)
                 currentCardNo = text1
-                if (PaymentConfig.load(this).isReady()) {
+                val amountIsZero = amount == "0" || amount == "0.00"
+                if (amountIsZero) {
+                    Log.e("OverlayService", "Skip payment: amount is 0 (pre-paid)")
+                } else if (PaymentConfig.load(this).isReady()) {
                     paymentManager?.startPayment(text1)
                 }
             }
@@ -738,6 +810,36 @@ class OverlayService : Service() {
                 gateTimeoutJob?.cancel()
                 paymentManager?.destroy()
                 setupPaymentManager()
+            }
+            Page.CASH_ENTRY -> {
+                cashEntryView!!.setPlate(text1)
+                cashEntryView!!.setTypeBadge("CASH")
+                cashEntryView!!.setBalance(text4)
+            }
+            Page.CASH_ENTRY_DENY -> {
+                cashEntryDenyView!!.setPlate(text1)
+                cashEntryDenyView!!.setTypeBadge("CASH")
+                cashEntryDenyView!!.setBalance(text4)
+            }
+            Page.CASH_EXIT -> {
+                cashExitView!!.setPlate(text1)
+                cashExitView!!.setTypeBadge("CASH")
+                cashExitView!!.setBalance(text4)
+            }
+            Page.CASH_EXIT_DENY -> {
+                cashExitDenyView!!.setPlate(text1)
+                cashExitDenyView!!.setTypeBadge("CASH")
+                cashExitDenyView!!.setBalance(text4)
+            }
+            Page.EXPIRED_ENTRY_DENY -> {
+                expiredEntryDenyView!!.setPlate(text1)
+                expiredEntryDenyView!!.setTypeBadge(text3)
+                expiredEntryDenyView!!.setValidDate(text4)
+            }
+            Page.EXPIRED_EXIT_DENY -> {
+                expiredExitDenyView!!.setPlate(text1)
+                expiredExitDenyView!!.setTypeBadge(text3)
+                expiredExitDenyView!!.setValidDate(text4)
             }
             else -> { /* IDLE, EXIT_IDLE — no view updates needed */ }
         }

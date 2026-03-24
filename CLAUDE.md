@@ -33,7 +33,8 @@ Sits on top of PAAP (`com.anziot.park`) — the Chinese parking app that handles
 - `LogcatReaderService.kt` — background logcat reader via `Runtime.exec("logcat", "-s", "PRETTY_LOGGER:E", "anziot:I", "-T", "1")`. Uses AtomicBoolean to prevent duplicate processes. Drains stderr. 1s delay after `grantReadLogs()` before starting logcat process — fixes first-install permission race.
 - `PaapEventParser.kt` — regex extracts JSON from `UdpManager:handleUdpReadData` (inbound) / `UdpWriterManager:send` (outbound), maps to typed events. Also parses GPIO IO2 (`handleIo2 ioValue`) for ticket button press/release with debounce (only emits on value change).
 - `PaapEvent.kt` — sealed class: GateOpen, Speak, PrintTicket, DisplayUpdate, VehicleSensing, PushButton(pressed:Boolean), Heartbeat, OnlineCheck, LinphoneCall, DebugLog, Unknown
-- `OverlayService.kt` — draws UI via WindowManager overlay. Uses `TYPE_APPLICATION_OVERLAY` on API 26+ (emulator), `TYPE_SYSTEM_ALERT` on API 22 (box). Monitors PAAP foreground state via `su -c "dumpsys activity activities"` every 5s — shows red warning banner when PAAP not resumed. Manages page switching via `Page` enum and `showPage()`. Role toggle (entry/exit) is sole authority for page routing — entry mode only shows IDLE/TRANSACTION, exit mode only shows EXIT_IDLE/EXIT_TRANSACTION/COMPLETED_EXIT.
+- `PageRouter.kt` — pure page-routing logic (no Android deps). `decidePage(text1, text3, text4, role)` maps DisplayUpdate fields to Page enum. Detects member types: Temporary (default), Cash (`text3=="CASH"`), Cash deny (`text3 contains "has little money"`), Expired VIP/Season (`text3 contains "is Expiry"`). Also: `isCallActive()`, `isPaapResumed()`, `initialPageForRole()`.
+- `OverlayService.kt` — draws UI via WindowManager overlay. Uses `TYPE_APPLICATION_OVERLAY` on API 26+ (emulator), `TYPE_SYSTEM_ALERT` on API 22 (box). Monitors PAAP foreground state via `su -c "dumpsys activity activities"` every 5s — shows red warning banner when PAAP not resumed. Manages page switching via `Page` enum and `showPage()`. Role toggle (entry/exit) is sole authority for page routing — entry mode shows IDLE/TRANSACTION/CASH_ENTRY/CASH_ENTRY_DENY/EXPIRED_ENTRY_DENY, exit mode shows EXIT_IDLE/EXIT_TRANSACTION/COMPLETED_EXIT/CASH_EXIT/CASH_EXIT_DENY/EXPIRED_EXIT_DENY.
 - `MainActivity.kt` — launcher: starts LogcatReaderService + OverlayService, then finishes. Handles overlay permission prompt on API 23+.
 - `BootReceiver.kt` — `BOOT_COMPLETED` + `ACTION_RESTART` receiver. Starts all 3 services, clears guard pause flag. ADB setup moved to OverlayService.
 - `GuardService.kt` — watchdog in `:guard` process. Uses `GuardWatchdog` for pure restart logic.
@@ -55,7 +56,13 @@ All screens share: top bar (logo + clock), accent line, bottom bar (version + ne
 - **EXIT_TRANSACTION** — `ExitTransactionView` / `overlay_exit_transaction.xml` — plate, parking time, pay amount. Status: EXITING/yellow `#E8A000`. When payment enabled, uses `ExitTransactionPaymentView` / `overlay_exit_transaction_payment.xml` instead (left=ticket info, right=QR/icons+status).
 - **EXIT_TRANSACTION payment states**: AwaitingPayment (QR + countdown), Confirmed (checkmark_area.png + green "PAID" + "Processing..."), Expired (expired_area.png + red "EXPIRED"), Error (error_area.png + red "ERROR"), Gate timeout 20s (warning_area.png + yellow "Payment confirmed, gate not responding." + red "Please contact parking staff.").
 - **COMPLETED_EXIT** — `CompletedExitView` / `overlay_completed_exit.xml` — green EXITED, plate, badge, exit date, "THANK YOU". With payment: adds subtitle "Payment Confirmed, Paid via QR" via `tvPaymentConfirmed`.
-- **DEBUG** — `activity_main.xml` — event log + Page row (Idle, Transaction, Exit Idle, Exit Txn, Complete) + Pay row (Expired, Error, Gate Fail, Paid, Paid Exit) + ADB config + Payment config (API URL, API Key, Poll interval, ON/OFF toggle).
+- **CASH_ENTRY** — `CashEntryView` / `overlay_cash_entry.xml` — "WELCOME"/navy, ticket no, CASH badge, "Remaining Balance" + amount.
+- **CASH_ENTRY_DENY** — `CashEntryDenyView` / `overlay_cash_entry_deny.xml` — "Entry Deny"/red `#ff5555`, ticket no, CASH badge, balance (0).
+- **CASH_EXIT** — `CashExitView` / `overlay_cash_exit.xml` — "EXITED"/green, ticket no, CASH badge, remaining balance, "THANK YOU".
+- **CASH_EXIT_DENY** — `CashExitDenyView` / `overlay_cash_exit_deny.xml` — "Exit Deny"/red `#ff5555`, ticket no, CASH badge, low balance.
+- **EXPIRED_ENTRY_DENY** — `ExpiredEntryDenyView` / `overlay_expired_entry_deny.xml` — "Entry Deny"/red, ticket no, badge from text3 (e.g. "Vehicle No. is Expiry."), "Valid Date" + date.
+- **EXPIRED_EXIT_DENY** — `ExpiredExitDenyView` / `overlay_expired_exit_deny.xml` — "Exit Deny"/red, same layout as entry deny.
+- **DEBUG** — `activity_main.xml` — event log + Page row (Idle, Transaction, Exit Idle, Exit Txn, Complete) + Cash row (Entry, Entry Deny, Exit, Exit Deny, Exp Entry, Exp Exit) + Pay row (Expired, Error, Gate Fail, Paid, Paid Exit) + ADB config + Payment config (API URL, API Key, Poll interval, ON/OFF toggle).
 
 Debug access: 6-tap "Connected" text in bottom bar on any screen.
 
@@ -69,8 +76,10 @@ Debug access: 6-tap "Connected" text in bottom bar on any screen.
 
 ## Design Reference
 
-Pencil file: `/Users/vodka/Documents/Pencil/untitled.pen`
+Pencil file: `/Users/vodka/Documents/Pencil/terminal-box.pen`
 Frames: `Hdmbk` (Entry Idle), `bMAUt` (Transaction Entry), `bJGHf` (Exit Idle), `FMa34` (Active Transaction Exit), `iMUyu` (Completed Transaction Exit), `ItbOE` (Payment Expired), `ftrLC` (Payment Error), `UrCQx` (Payment Confirmed - Gate Not Responding)
+Cash frames (`Steru`): `B0hNw` (Cash Entry), `uNJqj` (Cash Entry Deny), `SKFcN` (Cash Exit), `E37eA` (Cash Exit Deny)
+VIP/Season frames (`reTG3`): `yfdLl` (Expired Entry Deny), `xXDz8` (Expired Exit Deny)
 
 ## Auto-start & Self-restart
 
@@ -107,6 +116,7 @@ Frames: `Hdmbk` (Entry Idle), `bMAUt` (Transaction Entry), `bJGHf` (Exit Idle), 
 ## QR Payment Integration
 
 - **Flow**: EXIT_TRANSACTION → PaymentManager.startPayment(cardNo) → API initiate → QR displayed → poll status → Confirmed → PAAP gate-open → COMPLETED_EXIT
+- **Pre-paid skip**: When pay amount is "0" or "0.00" (pay-first-go-later), payment is skipped — ABA rejects 0 fee. EXIT_TRANSACTION screen still shows, just no QR/payment flow.
 - **API**: `POST initiate`, `GET status/{tranId}`, `POST cancel`. Auth: `X-API-Key`. Base URL = domain only.
 - **Config**: SharedPreferences `payment_config` — baseUrl, apiKey, pollIntervalMs (default 10s), enabled (default OFF). Debug UI has fields + ON/OFF toggle.
 - **Happy path**: poll detects COMPLETED → show "Processing..." + checkmark → PAAP logcat gate-open event → COMPLETED_EXIT with payment label
@@ -118,6 +128,26 @@ Frames: `Hdmbk` (Entry Idle), `bMAUt` (Transaction Entry), `bJGHf` (Exit Idle), 
 - **JSON null safety**: API 22 `optString` returns literal `"null"` for JSON null. `safeString()`/`safeLong()` in `PaymentApiClient.Companion` normalize to `""`/`0L`. Used in all response parsing.
 - **Dependencies**: OkHttp3 `3.12.13` (last Java 7 compatible), coroutines-test, mockito-core
 - **Tests**: PaymentConfigTest (6), PaymentApiClientTest (24), PaymentManagerTest (19) — all pure logic, no Robolectric
+
+## Member Type Routing (PageRouter.decidePage)
+
+PAAP DisplayUpdate `text3` field determines member type and page routing:
+
+| text3 value | Entry Page | Exit Page |
+|-------------|-----------|-----------|
+| (default, e.g. "Temporary") | TRANSACTION | EXIT_TRANSACTION → COMPLETED_EXIT |
+| "CASH" | CASH_ENTRY | CASH_EXIT |
+| contains "has little money" | CASH_ENTRY_DENY | CASH_EXIT_DENY |
+| contains "is Expiry" | EXPIRED_ENTRY_DENY | EXPIRED_EXIT_DENY |
+| "VIP", "Season", etc. | TRANSACTION (existing) | COMPLETED_EXIT (existing) |
+| contains "Parking time" | — | EXIT_TRANSACTION |
+
+- **Cash screens**: show "TICKET NO." + "Remaining Balance" (text4) + CASH badge
+- **Expired screens**: show "TICKET NO." + "Valid Date" (text4) + badge from text3
+- **Deny screens**: red `#ff5555` status label ("Entry Deny" / "Exit Deny")
+- **UI view setters** use `log + return` on empty data (not `assert`) — prevents crash from malformed PAAP data
+- **View files**: `ui/entry/CashEntryView`, `CashEntryDenyView`, `ExpiredEntryDenyView`; `ui/exit/CashExitView`, `CashExitDenyView`, `ExpiredExitDenyView`
+- **Tests**: PageRouterTest (24), PaapEventParserTest (16), PaapEventTest (14) — 144 total
 
 ## Custom Ticket Printing (Direct USB Printer)
 

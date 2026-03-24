@@ -6,6 +6,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.widget.ImageView
 import android.widget.TextView
+import android.util.Log
 import com.activepark_paap.R
 import com.activepark_paap.ui.common.FontHelper
 
@@ -34,7 +35,7 @@ class ExitTransactionPaymentView(context: Context) {
     }
 
     fun setPlate(text: String) {
-        assert(text.isNotEmpty()) { "plate text empty" }
+        if (text.isEmpty()) { Log.e("ExitTxnPaymentView", "plate text empty"); return }
         tvPlate.text = text
         tvPlate.post {
             val parent = tvPlate.parent as View
@@ -44,19 +45,19 @@ class ExitTransactionPaymentView(context: Context) {
     }
 
     fun setParkingTime(text: String) {
-        assert(text.isNotEmpty()) { "parking time empty" }
+        if (text.isEmpty()) { Log.e("ExitTxnPaymentView", "parking time empty"); return }
         tvParkingTime.text = text
     }
 
     fun setPayAmount(text: String) {
-        assert(text.isNotEmpty()) { "pay amount empty" }
+        if (text.isEmpty()) { Log.e("ExitTxnPaymentView", "pay amount empty"); return }
         tvPayAmount.text = text
     }
 
     fun getPayAmount(): String = tvPayAmount.text.toString()
 
     fun setStatusLabel(text: String, color: Int) {
-        assert(text.isNotEmpty()) { "status label empty" }
+        if (text.isEmpty()) { Log.e("ExitTxnPaymentView", "status label empty"); return }
         tvStatusLabel.text = text
         tvStatusLabel.setTextColor(color)
         tvStatusLine.setBackgroundColor(color)
@@ -78,7 +79,7 @@ class ExitTransactionPaymentView(context: Context) {
     }
 
     fun setPayLabel(text: String) {
-        assert(text.isNotEmpty()) { "pay label empty" }
+        if (text.isEmpty()) { Log.e("ExitTxnPaymentView", "pay label empty"); return }
         tvPayLabel.text = text
     }
 
@@ -91,7 +92,7 @@ class ExitTransactionPaymentView(context: Context) {
     }
 
     fun setHelpText(text: String, color: Int) {
-        assert(text.isNotEmpty()) { "help text empty" }
+        if (text.isEmpty()) { Log.e("ExitTxnPaymentView", "help text empty"); return }
         tvHelpText.text = text
         tvHelpText.setTextColor(color)
         tvHelpText.visibility = View.VISIBLE

@@ -137,6 +137,86 @@ class PaapEventParserTest {
         assertNull(dup)
     }
 
+    // --- DisplayUpdate with member type text3 ---
+
+    @Test
+    fun `DisplayUpdate with CASH text3 and balance text4`() {
+        val json = """{"text1":{"text1Text":"CB12345","text1Color":"#000","text1Size":40,"text1Gravity":"LEFT"},"text3":{"text3Text":"CASH","text3Color":"#FFF","text3Size":30,"text3Gravity":"CENTER"},"text4":{"text4Text":"10000","text4Color":"#333","text4Size":56,"text4Gravity":"LEFT"}}"""
+        val line = "UdpManager: handleUdpReadData data = $json"
+        val event = PaapEventParser.parseLine(line) as PaapEvent.DisplayUpdate
+        assertEquals("CB12345", event.texts["text1"]?.text)
+        assertEquals("CASH", event.texts["text3"]?.text)
+        assertEquals("10000", event.texts["text4"]?.text)
+    }
+
+    @Test
+    fun `DisplayUpdate with cash deny text3`() {
+        val json = """{"text1":{"text1Text":"CB12345","text1Color":"#000","text1Size":40,"text1Gravity":"LEFT"},"text3":{"text3Text":"Vehicle No. has little money.","text3Color":"#FFF","text3Size":30,"text3Gravity":"CENTER"},"text4":{"text4Text":"0","text4Color":"#333","text4Size":56,"text4Gravity":"LEFT"}}"""
+        val line = "UdpManager: handleUdpReadData data = $json"
+        val event = PaapEventParser.parseLine(line) as PaapEvent.DisplayUpdate
+        assertEquals("Vehicle No. has little money.", event.texts["text3"]?.text)
+        assertEquals("0", event.texts["text4"]?.text)
+    }
+
+    @Test
+    fun `DisplayUpdate with expired text3`() {
+        val json = """{"text1":{"text1Text":"CB12345","text1Color":"#000","text1Size":40,"text1Gravity":"LEFT"},"text3":{"text3Text":"Vehicle No. is Expiry.","text3Color":"#FFF","text3Size":30,"text3Gravity":"CENTER"},"text4":{"text4Text":"04/23/2025","text4Color":"#333","text4Size":56,"text4Gravity":"LEFT"}}"""
+        val line = "UdpManager: handleUdpReadData data = $json"
+        val event = PaapEventParser.parseLine(line) as PaapEvent.DisplayUpdate
+        assertEquals("Vehicle No. is Expiry.", event.texts["text3"]?.text)
+        assertEquals("04/23/2025", event.texts["text4"]?.text)
+    }
+
+    @Test
+    fun `DisplayUpdate with VIP text3`() {
+        val json = """{"text1":{"text1Text":"CB12345","text1Color":"#000","text1Size":40,"text1Gravity":"LEFT"},"text3":{"text3Text":"VIP","text3Color":"#FFF","text3Size":30,"text3Gravity":"CENTER"}}"""
+        val line = "UdpManager: handleUdpReadData data = $json"
+        val event = PaapEventParser.parseLine(line) as PaapEvent.DisplayUpdate
+        assertEquals("VIP", event.texts["text3"]?.text)
+    }
+
+    @Test
+    fun `DisplayUpdate with missing text fields uses defaults`() {
+        val json = """{"text1":{"text1Text":"Hello"}}"""
+        val line = "UdpManager: handleUdpReadData data = $json"
+        val event = PaapEventParser.parseLine(line) as PaapEvent.DisplayUpdate
+        assertEquals("Hello", event.texts["text1"]?.text)
+        assertEquals("#FFFFFF", event.texts["text1"]?.color)
+        assertEquals(30, event.texts["text1"]?.size)
+        assertEquals("CENTER", event.texts["text1"]?.gravity)
+    }
+
+    // --- PrintTicket content edge cases ---
+
+    @Test
+    fun `PrintTicket with short content has empty ticketNo`() {
+        val json = """{"command":"Print","title":"Entry","content":"footer1;footer2","QRcode":"http://qr"}"""
+        val line = "UdpManager: handleUdpReadData data = $json"
+        val event = PaapEventParser.parseLine(line) as PaapEvent.PrintTicket
+        assertEquals("footer1", event.footer1)
+        assertEquals("footer2", event.footer2)
+        assertEquals("", event.entryDate)
+        assertEquals("", event.ticketNo)
+    }
+
+    @Test
+    fun `PrintTicket with empty content`() {
+        val json = """{"command":"Print","title":"Entry","content":"","QRcode":"http://qr"}"""
+        val line = "UdpManager: handleUdpReadData data = $json"
+        val event = PaapEventParser.parseLine(line) as PaapEvent.PrintTicket
+        assertEquals("", event.ticketNo)
+        assertEquals("http://qr", event.qrCode)
+    }
+
+    @Test
+    fun `PrintTicket with no content key`() {
+        val json = """{"command":"Print","title":"Entry","QRcode":"http://qr"}"""
+        val line = "UdpManager: handleUdpReadData data = $json"
+        val event = PaapEventParser.parseLine(line) as PaapEvent.PrintTicket
+        assertEquals("", event.content)
+        assertEquals("", event.ticketNo)
+    }
+
     @Test
     fun `unrecognized line returns null`() {
         assertNull(PaapEventParser.parseLine("some random log line"))

@@ -4,6 +4,7 @@ import android.content.Context
 import android.view.LayoutInflater
 import android.view.View
 import android.widget.TextView
+import android.util.Log
 import com.activepark_paap.R
 import com.activepark_paap.ui.common.FontHelper
 
@@ -23,7 +24,7 @@ class CompletedExitView(context: Context) {
     }
 
     fun setPlate(text: String) {
-        assert(text.isNotEmpty()) { "plate text empty" }
+        if (text.isEmpty()) { Log.e("CompletedExitView", "plate text empty"); return }
         tvPlate.text = text
         tvPlate.post {
             val parent = tvPlate.parent as View
@@ -33,17 +34,17 @@ class CompletedExitView(context: Context) {
     }
 
     fun setTypeBadge(text: String) {
-        assert(text.isNotEmpty()) { "badge text empty" }
+        if (text.isEmpty()) { Log.e("CompletedExitView", "badge text empty"); return }
         tvTypeBadge.text = text
     }
 
     fun setExitDate(text: String) {
-        assert(text.isNotEmpty()) { "exit date empty" }
+        if (text.isEmpty()) { Log.e("CompletedExitView", "exit date empty"); return }
         tvExitDate.text = text
     }
 
     fun setPaymentConfirmed(subtitle: String) {
-        assert(subtitle.isNotEmpty()) { "payment subtitle empty" }
+        if (subtitle.isEmpty()) { Log.e("CompletedExitView", "payment subtitle empty"); return }
         tvPaymentConfirmed.text = subtitle
         tvPaymentConfirmed.visibility = View.VISIBLE
     }

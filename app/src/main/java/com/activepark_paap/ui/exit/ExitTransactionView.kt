@@ -4,6 +4,7 @@ import android.content.Context
 import android.view.LayoutInflater
 import android.view.View
 import android.widget.TextView
+import android.util.Log
 import com.activepark_paap.R
 import com.activepark_paap.ui.common.FontHelper
 
@@ -23,7 +24,7 @@ class ExitTransactionView(context: Context) {
     }
 
     fun setPlate(text: String) {
-        assert(text.isNotEmpty()) { "plate text empty" }
+        if (text.isEmpty()) { Log.e("ExitTransactionView", "plate text empty"); return }
         tvPlate.text = text
         tvPlate.post {
             val parent = tvPlate.parent as View
@@ -33,17 +34,17 @@ class ExitTransactionView(context: Context) {
     }
 
     fun setParkingTime(text: String) {
-        assert(text.isNotEmpty()) { "parking time empty" }
+        if (text.isEmpty()) { Log.e("ExitTransactionView", "parking time empty"); return }
         tvParkingTime.text = text
     }
 
     fun setPayAmount(text: String) {
-        assert(text.isNotEmpty()) { "pay amount empty" }
+        if (text.isEmpty()) { Log.e("ExitTransactionView", "pay amount empty"); return }
         tvPayAmount.text = text
     }
 
     fun setStatusLabel(text: String, color: Int) {
-        assert(text.isNotEmpty()) { "status label empty" }
+        if (text.isEmpty()) { Log.e("ExitTransactionView", "status label empty"); return }
         tvStatusLabel.text = text
         tvStatusLabel.setTextColor(color)
         tvStatusLine.setBackgroundColor(color)

@@ -50,6 +50,102 @@ class PageRouterTest {
         )
     }
 
+    // --- decidePage: cash entry ---
+
+    @Test
+    fun `entry CASH type → CASH_ENTRY`() {
+        assertEquals(
+            PageRouter.Page.CASH_ENTRY,
+            PageRouter.decidePage("CB12345", "CASH", "10000", "entry")
+        )
+    }
+
+    @Test
+    fun `entry cash case-insensitive → CASH_ENTRY`() {
+        assertEquals(
+            PageRouter.Page.CASH_ENTRY,
+            PageRouter.decidePage("CB12345", "Cash", "500", "entry")
+        )
+    }
+
+    @Test
+    fun `entry has little money → CASH_ENTRY_DENY`() {
+        assertEquals(
+            PageRouter.Page.CASH_ENTRY_DENY,
+            PageRouter.decidePage("CB12345", "Vehicle No. has little money.", "0", "entry")
+        )
+    }
+
+    // --- decidePage: cash exit ---
+
+    @Test
+    fun `exit CASH type → CASH_EXIT`() {
+        assertEquals(
+            PageRouter.Page.CASH_EXIT,
+            PageRouter.decidePage("CB12345", "CASH", "9800", "exit")
+        )
+    }
+
+    @Test
+    fun `exit has little money → CASH_EXIT_DENY`() {
+        assertEquals(
+            PageRouter.Page.CASH_EXIT_DENY,
+            PageRouter.decidePage("CB12345", "Vehicle No. has little money.", "50", "exit")
+        )
+    }
+
+    // --- decidePage: expired VIP/Season ---
+
+    @Test
+    fun `entry is Expiry → EXPIRED_ENTRY_DENY`() {
+        assertEquals(
+            PageRouter.Page.EXPIRED_ENTRY_DENY,
+            PageRouter.decidePage("CB12345", "Vehicle No. is Expiry.", "04/23/2025", "entry")
+        )
+    }
+
+    @Test
+    fun `exit is Expiry → EXPIRED_EXIT_DENY`() {
+        assertEquals(
+            PageRouter.Page.EXPIRED_EXIT_DENY,
+            PageRouter.decidePage("CB12345", "Vehicle No. is Expiry.", "04/23/2025", "exit")
+        )
+    }
+
+    // --- decidePage: VIP/Season success → existing pages ---
+
+    @Test
+    fun `entry VIP → TRANSACTION (not cash)`() {
+        assertEquals(
+            PageRouter.Page.TRANSACTION,
+            PageRouter.decidePage("CB12345", "VIP", "04/23/2025", "entry")
+        )
+    }
+
+    @Test
+    fun `entry Season → TRANSACTION (not cash)`() {
+        assertEquals(
+            PageRouter.Page.TRANSACTION,
+            PageRouter.decidePage("CB12345", "Season", "04/23/2025", "entry")
+        )
+    }
+
+    @Test
+    fun `exit VIP → COMPLETED_EXIT (not cash)`() {
+        assertEquals(
+            PageRouter.Page.COMPLETED_EXIT,
+            PageRouter.decidePage("CB12345", "VIP", "04/23/2025", "exit")
+        )
+    }
+
+    @Test
+    fun `exit Season → COMPLETED_EXIT (not cash)`() {
+        assertEquals(
+            PageRouter.Page.COMPLETED_EXIT,
+            PageRouter.decidePage("CB12345", "Season", "04/23/2025", "exit")
+        )
+    }
+
     // --- decidePage: edge cases ---
 
     @Test
