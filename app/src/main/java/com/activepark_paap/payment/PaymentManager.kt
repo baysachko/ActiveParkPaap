@@ -115,8 +115,12 @@ class PaymentManager(
             val poll = apiClient.pollStatus(tranId)
             if (poll is ApiResult.Success) {
                 when (poll.data.status) {
-                    "COMPLETED_TERMINAL_BOX", "COMPLETED_VIA_FREE_VEHICLE_TERMINAL_BOX" -> {
+                    "COMPLETED_TERMINAL_BOX", "PRE_AUTH_HELD_TERMINAL_BOX" -> {
                         _state.value = PaymentState.Confirmed(tranId)
+                        return
+                    }
+                    "CANCELLED_PRE_AUTH_TERMINAL_BOX" -> {
+                        _state.value = PaymentState.Error("Payment released, try again")
                         return
                     }
                     "EXPIRED" -> {

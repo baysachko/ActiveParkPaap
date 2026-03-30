@@ -63,6 +63,14 @@ class PaymentManagerTest {
         pollResult = ApiResult.Success(StatusResponse("COMPLETED_TERMINAL_BOX", tranId, "4.00", "USD"))
     }
 
+    private fun preAuthHeldPoll(tranId: String = "txn1") {
+        pollResult = ApiResult.Success(StatusResponse("PRE_AUTH_HELD_TERMINAL_BOX", tranId, "4.00", "USD"))
+    }
+
+    private fun cancelledPreAuthPoll(tranId: String = "txn1") {
+        pollResult = ApiResult.Success(StatusResponse("CANCELLED_PRE_AUTH_TERMINAL_BOX", tranId, "4.00", "USD"))
+    }
+
     private fun expiredPoll(tranId: String = "txn1") {
         pollResult = ApiResult.Success(StatusResponse("EXPIRED", tranId, "4.00", "USD"))
     }
@@ -221,6 +229,36 @@ class PaymentManagerTest {
         advanceTimeBy(5001)
 
         assertTrue(manager.state.value is PaymentState.Expired)
+    }
+
+    @Test
+    fun pollStatus_preAuthHeld_emitsConfirmed() = testScope.runTest {
+        successInitiate()
+        pendingPoll()
+        manager.startPayment("CARD1")
+        advanceTimeBy(1)
+        assertTrue(manager.state.value is PaymentState.AwaitingPayment)
+
+        preAuthHeldPoll()
+        advanceTimeBy(5001)
+
+        assertTrue(manager.state.value is PaymentState.Confirmed)
+    }
+
+    @Test
+    fun pollStatus_cancelledPreAuth_emitsError() = testScope.runTest {
+        successInitiate()
+        pendingPoll()
+        manager.startPayment("CARD1")
+        advanceTimeBy(1)
+        assertTrue(manager.state.value is PaymentState.AwaitingPayment)
+
+        cancelledPreAuthPoll()
+        advanceTimeBy(5001)
+
+        val state = manager.state.value
+        assertTrue(state is PaymentState.Error)
+        assertEquals("Payment released, try again", (state as PaymentState.Error).message)
     }
 
     // --- cancel ---
